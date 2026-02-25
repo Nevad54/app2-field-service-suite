@@ -52,6 +52,20 @@ nav a.active {
   background: var(--brand);
 }
 
+.btn-link {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.btn-link:hover {
+  background: #e7f4f2;
+  color: #0b5d56;
+}
+
 .main {
   max-width: 1000px;
   margin: 0 auto;
@@ -66,6 +80,84 @@ nav a.active {
 }
 
 .card h1 { margin-top: 0; }
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  max-width: 360px;
+}
+
+.auth-form input {
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+}
+
+.btn-primary {
+  border: 0;
+  background: var(--brand);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.form-error {
+  color: #b91c1c;
+  margin: 0;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.stat {
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fbfdff;
+}
+
+.stat span {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: block;
+}
+
+.stat strong {
+  font-size: 1.2rem;
+}
+
+.jobs-list {
+  display: grid;
+  gap: 10px;
+}
+
+.job-item {
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.job-item h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.job-item p {
+  margin: 0 0 4px;
+}
 
 @media (max-width: 640px) {
   .topbar {
