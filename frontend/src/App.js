@@ -17,6 +17,24 @@ const loadStoredAuth = () => {
   }
 };
 
+async function apiFetch(path, { token, method = 'GET', body } = {}) {
+  const response = await fetch(path, {
+    method,
+    headers: {
+      Accept: 'application/json',
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...toAuthHeader(token),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error((data && data.error) || 'Request failed');
+  }
+  return data;
+}
+
 function HomePage() {
   return (
     <section className="card">
@@ -87,11 +105,7 @@ function DashboardPage({ token, user }) {
     const run = async () => {
       try {
         setError('');
-        const response = await fetch('/api/dashboard/summary', {
-          headers: { Accept: 'application/json', ...toAuthHeader(token) },
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to load dashboard');
+        const data = await apiFetch('/api/dashboard/summary', { token });
         if (!cancelled) setSummary(data);
       } catch (e) {
         if (!cancelled) setError(e.message || 'Failed to load dashboard');
@@ -123,47 +137,213 @@ function DashboardPage({ token, user }) {
   );
 }
 
-function JobsPage({ token }) {
+function JobsPage({ token, user }) {
   const [jobs, setJobs] = useState([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [workingId, setWorkingId] = useState('');
+  const canManageJobs = user.role === 'admin' || user.role === 'dispatcher';
+  const isTechnician = user.role === 'technician';
+
+  const [draft, setDraft] = useState({
+    title: '',
+    location: '',
+    priority: 'medium',
+    assignedTo: 'technician',
+  });
+
+  const fetchJobs = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await apiFetch('/api/jobs', { token });
+      setJobs(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.message || 'Failed to load jobs');
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
 
   useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      try {
-        setError('');
-        const response = await fetch('/api/jobs', { headers: { Accept: 'application/json', ...toAuthHeader(token) } });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to load jobs');
-        if (!cancelled) setJobs(Array.isArray(data) ? data : []);
-      } catch (e) {
-        if (!cancelled) setError(e.message || 'Failed to load jobs');
-      }
-    };
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [token]);
+    fetchJobs();
+  }, [fetchJobs]);
+
+  const handleCreate = async (event) => {
+    event.preventDefault();
+    setError('');
+    try {
+      await apiFetch('/api/jobs', { token, method: 'POST', body: draft });
+      setDraft({ title: '', location: '', priority: 'medium', assignedTo: 'technician' });
+      await fetchJobs();
+    } catch (e) {
+      setError(e.message || 'Failed to create job');
+    }
+  };
+
+  const handleStatus = async (jobId, status) => {
+    setWorkingId(jobId);
+    setError('');
+    try {
+      await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/status`, { token, method: 'PATCH', body: { status } });
+      await fetchJobs();
+    } catch (e) {
+      setError(e.message || 'Failed to update status');
+    } finally {
+      setWorkingId('');
+    }
+  };
+
+  const handleManagerUpdate = async (job) => {
+    setWorkingId(job.id);
+    setError('');
+    try {
+      await apiFetch(`/api/jobs/${encodeURIComponent(job.id)}`, {
+        token,
+        method: 'PUT',
+        body: {
+          title: job.title,
+          priority: job.priority,
+          status: job.status,
+          assignedTo: job.assignedTo,
+          location: job.location,
+        },
+      });
+      await fetchJobs();
+    } catch (e) {
+      setError(e.message || 'Failed to save job');
+    } finally {
+      setWorkingId('');
+    }
+  };
+
+  const patchLocalJob = (jobId, field, value) => {
+    setJobs((prev) => prev.map((item) => (item.id === jobId ? { ...item, [field]: value } : item)));
+  };
 
   return (
     <section className="card">
       <h1>Jobs</h1>
       {error ? <p className="form-error">{error}</p> : null}
-      {!jobs.length ? (
-        <p>No jobs available.</p>
-      ) : (
+
+      {canManageJobs ? (
+        <form className="job-create-form" onSubmit={handleCreate}>
+          <h2>Create Job</h2>
+          <div className="grid-2">
+            <input
+              placeholder="Job title"
+              value={draft.title}
+              onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
+            />
+            <input
+              placeholder="Location"
+              value={draft.location}
+              onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))}
+            />
+            <select value={draft.priority} onChange={(e) => setDraft((prev) => ({ ...prev, priority: e.target.value }))}>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+            <select value={draft.assignedTo} onChange={(e) => setDraft((prev) => ({ ...prev, assignedTo: e.target.value }))}>
+              <option value="">Unassigned</option>
+              <option value="technician">technician</option>
+            </select>
+          </div>
+          <button type="submit" className="btn-primary">Create Job</button>
+        </form>
+      ) : null}
+
+      {loading ? <p>Loading jobs...</p> : null}
+      {!loading && !jobs.length ? <p>No jobs available.</p> : null}
+      {!loading && jobs.length ? (
         <div className="jobs-list">
           {jobs.map((job) => (
             <article key={job.id} className="job-item">
-              <h3>{job.id} - {job.title}</h3>
-              <p>Status: <strong>{job.status}</strong></p>
-              <p>Priority: <strong>{job.priority}</strong></p>
-              {job.assignedTo ? <p>Assigned: <strong>{job.assignedTo}</strong></p> : null}
+              <h3>{job.id}</h3>
+              {canManageJobs ? (
+                <input value={job.title} onChange={(e) => patchLocalJob(job.id, 'title', e.target.value)} />
+              ) : (
+                <p className="job-title">{job.title}</p>
+              )}
+
+              <div className="job-meta">
+                <label>
+                  Priority
+                  {canManageJobs ? (
+                    <select value={job.priority} onChange={(e) => patchLocalJob(job.id, 'priority', e.target.value)}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  ) : <strong>{job.priority}</strong>}
+                </label>
+
+                <label>
+                  Status
+                  {canManageJobs ? (
+                    <select value={job.status} onChange={(e) => patchLocalJob(job.id, 'status', e.target.value)}>
+                      <option value="new">new</option>
+                      <option value="assigned">assigned</option>
+                      <option value="in-progress">in-progress</option>
+                      <option value="completed">completed</option>
+                    </select>
+                  ) : <strong>{job.status}</strong>}
+                </label>
+
+                <label>
+                  Assigned
+                  {canManageJobs ? (
+                    <select value={job.assignedTo || ''} onChange={(e) => patchLocalJob(job.id, 'assignedTo', e.target.value)}>
+                      <option value="">Unassigned</option>
+                      <option value="technician">technician</option>
+                    </select>
+                  ) : <strong>{job.assignedTo || 'Unassigned'}</strong>}
+                </label>
+
+                <label>
+                  Location
+                  {canManageJobs ? (
+                    <input value={job.location || ''} onChange={(e) => patchLocalJob(job.id, 'location', e.target.value)} />
+                  ) : <strong>{job.location || 'Unspecified'}</strong>}
+                </label>
+              </div>
+
+              {canManageJobs ? (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => handleManagerUpdate(job)}
+                  disabled={workingId === job.id}
+                >
+                  {workingId === job.id ? 'Saving...' : 'Save Job'}
+                </button>
+              ) : null}
+
+              {isTechnician ? (
+                <div className="job-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleStatus(job.id, 'in-progress')}
+                    disabled={workingId === job.id || job.status === 'in-progress' || job.status === 'completed'}
+                  >
+                    Start
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleStatus(job.id, 'completed')}
+                    disabled={workingId === job.id || job.status === 'completed'}
+                  >
+                    Complete
+                  </button>
+                </div>
+              ) : null}
             </article>
           ))}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -187,13 +367,10 @@ export default function App() {
   }, []);
 
   const login = useCallback(async (username, password) => {
-    const response = await fetch('/api/auth/login', {
+    const payload = await apiFetch('/api/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: { username, password },
     });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || 'Login failed');
     persistAuth(payload);
     return payload;
   }, [persistAuth]);
@@ -201,10 +378,7 @@ export default function App() {
   const logout = useCallback(async () => {
     if (auth && auth.token) {
       try {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { Accept: 'application/json', ...toAuthHeader(auth.token) },
-        });
+        await apiFetch('/api/auth/logout', { token: auth.token, method: 'POST' });
       } catch (_) {}
     }
     persistAuth(null);
@@ -249,7 +423,7 @@ export default function App() {
             path="/jobs"
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
-                <JobsPage token={auth?.token} />
+                <JobsPage token={auth?.token} user={auth?.user} />
               </ProtectedRoute>
             )}
           />

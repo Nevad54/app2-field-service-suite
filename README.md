@@ -19,14 +19,14 @@ npm run dev
 - Frontend: `http://localhost:3001`
 - Backend: `http://localhost:3002/api/status`
 
-## Routes (Sprint 2)
+## Routes (Sprint 3)
 
 - `/`
 - `/login`
 - `/dashboard`
 - `/jobs`
 
-## Backend APIs (Sprint 2)
+## Backend APIs (Sprint 3)
 
 - `GET /api/status`
 - `POST /api/auth/login`
@@ -34,6 +34,9 @@ npm run dev
 - `POST /api/auth/logout`
 - `GET /api/dashboard/summary` (auth required)
 - `GET /api/jobs` (auth required)
+- `POST /api/jobs` (admin/dispatcher)
+- `PUT /api/jobs/:id` (admin/dispatcher)
+- `PATCH /api/jobs/:id/status` (admin/dispatcher, technician on assigned jobs)
 
 ## Demo Accounts
 
@@ -57,4 +60,5 @@ npm run dev
 - [x] Frontend scaffold
 - [x] Backend scaffold
 - [x] Sprint 2 auth + protected routes MVP
+- [x] Sprint 3 jobs CRUD + role workflow MVP
 - [ ] First release (`v0.1.0`)

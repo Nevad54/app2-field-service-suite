@@ -109,6 +109,21 @@ nav a.active {
   cursor: not-allowed;
 }
 
+.btn-secondary {
+  border: 1px solid var(--stroke);
+  background: #f8fbff;
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-secondary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .form-error {
   color: #b91c1c;
   margin: 0;
@@ -141,6 +156,7 @@ nav a.active {
 .jobs-list {
   display: grid;
   gap: 10px;
+  margin-top: 14px;
 }
 
 .job-item {
@@ -148,6 +164,8 @@ nav a.active {
   border-radius: 10px;
   padding: 12px;
   background: #fbfdff;
+  display: grid;
+  gap: 10px;
 }
 
 .job-item h3 {
@@ -157,6 +175,61 @@ nav a.active {
 
 .job-item p {
   margin: 0 0 4px;
+}
+
+.job-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.job-create-form {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.job-create-form h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.grid-2 {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.job-create-form input,
+.job-create-form select,
+.job-meta input,
+.job-meta select,
+.job-item input {
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  width: 100%;
+}
+
+.job-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.job-meta label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.job-actions {
+  display: flex;
+  gap: 8px;
 }
 
 @media (max-width: 640px) {

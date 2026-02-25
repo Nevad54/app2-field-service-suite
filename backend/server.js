@@ -16,9 +16,9 @@ const users = [
 ];
 
 const jobs = [
-  { id: 'JOB-1001', title: 'HVAC preventive maintenance', status: 'new', priority: 'medium', assignedTo: 'technician' },
-  { id: 'JOB-1002', title: 'Generator inspection', status: 'assigned', priority: 'high', assignedTo: 'technician' },
-  { id: 'JOB-1003', title: 'Electrical panel audit', status: 'in-progress', priority: 'high', assignedTo: 'technician' },
+  { id: 'JOB-1001', title: 'HVAC preventive maintenance', status: 'new', priority: 'medium', assignedTo: 'technician', location: 'Building A' },
+  { id: 'JOB-1002', title: 'Generator inspection', status: 'assigned', priority: 'high', assignedTo: 'technician', location: 'Warehouse North' },
+  { id: 'JOB-1003', title: 'Electrical panel audit', status: 'in-progress', priority: 'high', assignedTo: 'technician', location: 'Main Plant' },
 ];
 
 const sessions = new Map();
@@ -43,6 +43,24 @@ const requireAuth = (req, res, next) => {
   req.authToken = token;
   return next();
 };
+
+const requireRoles = (allowedRoles) => (req, res, next) => {
+  if (!req.authUser || !allowedRoles.includes(req.authUser.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  return next();
+};
+
+const nextJobId = () => {
+  const max = jobs.reduce((acc, item) => {
+    const n = Number(String(item.id || '').replace('JOB-', '')) || 0;
+    return n > acc ? n : acc;
+  }, 1000);
+  return `JOB-${String(max + 1).padStart(4, '0')}`;
+};
+
+const findJobById = (id) => jobs.find((item) => String(item.id) === String(id));
+const technicianUsernames = users.filter((u) => u.role === 'technician').map((u) => u.username);
 
 app.get('/api/status', (_req, res) => {
   res.json({ ok: true, service: 'app2-field-service-suite-backend', timestamp: new Date().toISOString() });
@@ -74,6 +92,72 @@ app.get('/api/jobs', requireAuth, (req, res) => {
     return res.json(jobs.filter((job) => job.assignedTo === req.authUser.username));
   }
   return res.json(jobs);
+});
+
+app.post('/api/jobs', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+  const title = String(req.body.title || '').trim();
+  const priority = String(req.body.priority || 'medium').trim().toLowerCase();
+  const assignedTo = String(req.body.assignedTo || '').trim();
+  const location = String(req.body.location || '').trim();
+
+  if (!title) return res.status(400).json({ error: 'Job title is required' });
+  if (!['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
+  if (assignedTo && !technicianUsernames.includes(assignedTo)) {
+    return res.status(400).json({ error: 'Assigned technician not found' });
+  }
+
+  const created = {
+    id: nextJobId(),
+    title,
+    status: assignedTo ? 'assigned' : 'new',
+    priority,
+    assignedTo: assignedTo || '',
+    location: location || 'Unspecified',
+  };
+  jobs.unshift(created);
+  return res.status(201).json(created);
+});
+
+app.put('/api/jobs/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+  const existing = findJobById(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Job not found' });
+
+  const title = req.body.title !== undefined ? String(req.body.title || '').trim() : existing.title;
+  const priority = req.body.priority !== undefined ? String(req.body.priority || '').trim().toLowerCase() : existing.priority;
+  const assignedTo = req.body.assignedTo !== undefined ? String(req.body.assignedTo || '').trim() : existing.assignedTo;
+  const status = req.body.status !== undefined ? String(req.body.status || '').trim().toLowerCase() : existing.status;
+  const location = req.body.location !== undefined ? String(req.body.location || '').trim() : existing.location;
+
+  if (!title) return res.status(400).json({ error: 'Job title is required' });
+  if (!['low', 'medium', 'high'].includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
+  if (!['new', 'assigned', 'in-progress', 'completed'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+  if (assignedTo && !technicianUsernames.includes(assignedTo)) return res.status(400).json({ error: 'Assigned technician not found' });
+
+  existing.title = title;
+  existing.priority = priority;
+  existing.assignedTo = assignedTo;
+  existing.status = assignedTo ? status : 'new';
+  existing.location = location || 'Unspecified';
+
+  return res.json(existing);
+});
+
+app.patch('/api/jobs/:id/status', requireAuth, (req, res) => {
+  const existing = findJobById(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Job not found' });
+
+  const status = String(req.body.status || '').trim().toLowerCase();
+  if (!['assigned', 'in-progress', 'completed'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+
+  if (req.authUser.role === 'technician') {
+    if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+    if (status === 'assigned') return res.status(400).json({ error: 'Technicians cannot set assigned status' });
+  } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  existing.status = status;
+  return res.json(existing);
 });
 
 app.get('/api/dashboard/summary', requireAuth, (req, res) => {
