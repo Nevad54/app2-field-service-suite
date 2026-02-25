@@ -2,9 +2,34 @@
 
 A full-stack field service management app for scheduling jobs, dispatching technicians, tracking work orders, and generating service reports.
 
-## Positioning
+## Quick Start
 
-This is App 2 of my portfolio and intentionally differs from App 1 (construction operations) to show product range.
+1. Install dependencies:
+
+```bash
+npm run install:all
+```
+
+2. Start frontend + backend:
+
+```bash
+npm run dev
+```
+
+- Frontend: `http://localhost:3001`
+- Backend: `http://localhost:3002/api/status`
+
+## Routes (Sprint 1 scaffold)
+
+- `/`
+- `/login`
+- `/dashboard`
+- `/jobs`
+
+## Backend APIs (Sprint 1 scaffold)
+
+- `GET /api/status`
+- `GET /api/jobs`
 
 ## Planned Core Features
 
@@ -15,23 +40,9 @@ This is App 2 of my portfolio and intentionally differs from App 1 (construction
 - Client portal for job status and service history
 - Report exports (PDF/CSV)
 
-## Starter Roadmap
-
-1. Scaffold frontend routes and layout shell
-2. Build auth + protected routes
-3. Build jobs CRUD and assignment flow
-4. Add notifications and status timeline
-5. Deploy and package for portfolio
-
-## Tech Target
-
-- Frontend: React + Tailwind
-- Backend: Node.js + Express + MongoDB
-- Deployment: Netlify (frontend) + Render (backend)
-
 ## Status
 
 - [x] Repository initialized
-- [ ] Frontend scaffold
-- [ ] Backend scaffold
+- [x] Frontend scaffold
+- [x] Backend scaffold
 - [ ] First release (`v0.1.0`)
