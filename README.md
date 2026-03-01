@@ -1,64 +1,87 @@
-# App 2 - Field Service Suite
+# Carl Daven Quimoyog  
+**Full-Stack Web Systems Developer • AI Automation Builder**
 
-A full-stack field service management app for scheduling jobs, dispatching technicians, tracking work orders, and generating service reports.
+---
 
-## Quick Start
+## Systems that free your operations
+Build scalable web platforms and AI automations that save time, cut manual work, and keep your business moving. With a foundation in real-world construction logistics, I translate workflows into reliable systems—not just lines of code.
 
-1. Install dependencies:
+---
 
-```bash
-npm run install:all
-```
+### Services & Solutions
+- Process automation that eliminates repetitive tasks
+- Internal management and role-based platforms
+- Custom dashboards & reporting tools
+- Workflow optimization and data visibility
+- Integration with AI for smarter decision‑making
 
-2. Start frontend + backend:
+---
 
-```bash
-npm run dev
-```
+### Full‑Stack Skills
+**Frontend Technologies**
+React, Vue, Angular, Tailwind CSS, Bootstrap, HTML5, CSS3, JavaScript/TypeScript
 
-- Frontend: `http://localhost:3001`
-- Backend: `http://localhost:3002/api/status`
+**Backend Technologies**
+Node.js, Express, Python, .NET Core, REST APIs, GraphQL
 
-## Routes (Sprint 3)
+**Databases**
+PostgreSQL, MySQL, MongoDB, SQL Server
 
-- `/`
-- `/login`
-- `/dashboard`
-- `/jobs`
+**AI / Automation Tools**
+Python ML, OpenAI, TensorFlow, Zapier, Power Automate
 
-## Backend APIs (Sprint 3)
+**Dev Tools / Platforms**
+Git, GitHub, npm, Webpack, Docker, VS Code, CI/CD pipelines
 
-- `GET /api/status`
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `POST /api/auth/logout`
-- `GET /api/dashboard/summary` (auth required)
-- `GET /api/jobs` (auth required)
-- `POST /api/jobs` (admin/dispatcher)
-- `PUT /api/jobs/:id` (admin/dispatcher)
-- `PATCH /api/jobs/:id/status` (admin/dispatcher, technician on assigned jobs)
+**System Design Capabilities**
+Workflow modeling, role-based access, scalable architecture, data synchronization, operational reporting
 
-## Demo Accounts
+---
 
-- `admin` / `1111`
-- `dispatcher` / `1111`
-- `technician` / `1111`
-- `client` / `1111`
+### Featured System Projects
+**Construction Crew Scheduler**  
+*Problem:* Manual crew planning.  
+*Built:* Role-aware scheduling app with mobile check-ins.  
+*Impact:* 40% drop in planning time, real-time crew visibility.  
+*Stack:* React · Node.js · Express · MongoDB
 
-## Planned Core Features
+**Field Service Quotations**  
+*Problem:* Slow, error-prone quoting.  
+*Built:* Automated quote engine linked to cost database.  
+*Impact:* Quotes delivered 70% faster, accuracy ↑20%.  
+*Stack:* Vue.js · Python · PostgreSQL · Zapier
 
-- Role-based auth (`admin`, `dispatcher`, `technician`, `client`)
-- Job scheduling calendar
-- Work order lifecycle (new -> assigned -> in-progress -> completed)
-- Technician mobile-friendly dashboard
-- Client portal for job status and service history
-- Report exports (PDF/CSV)
+**Inventory & Logistics Dashboard**  
+*Problem:* Disconnected stock data across sites.  
+*Built:* Live dashboard syncing multiple warehouses.  
+*Impact:* Zero stockouts, empowered logistics team.  
+*Stack:* Angular · .NET Core · SQL Server
 
-## Status
+---
 
-- [x] Repository initialized
-- [x] Frontend scaffold
-- [x] Backend scaffold
-- [x] Sprint 2 auth + protected routes MVP
-- [x] Sprint 3 jobs CRUD + role workflow MVP
-- [ ] First release (`v0.1.0`)
+### Technologies & Badges
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB) ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=node.js&logoColor=white) ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Vue.js](https://img.shields.io/badge/Vue.js-4FC08D?style=for-the-badge&logo=vue.js&logoColor=white) ![Angular](https://img.shields.io/badge/Angular-DD0031?style=for-the-badge&logo=angular&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white)
+
+![MongoDB](https://img.shields.io/badge/MongoDB-47A248?style=for-the-badge&logo=mongodb&logoColor=white) ![Zapier](https://img.shields.io/badge/Zapier-FF4A00?style=for-the-badge&logo=zapier&logoColor=white) ![OpenAI](https://img.shields.io/badge/OpenAI-000000?style=for-the-badge&logo=openai&logoColor=white)
+
+---
+
+### GitHub
+![GitHub stats](https://github-readme-stats.vercel.app/api?username=Nevad54&show_icons=true&theme=dark)  
+![Streak](https://github-readme-streak-stats.herokuapp.com/?user=Nevad54&theme=dark)  
+![Visitor Count](https://komarev.com/ghpvc/?username=Nevad54&color=grey)
+
+---
+
+### Why work with me
+- Think in systems, not snippets
+- Development aligned with business goals
+- Automation mindset from operations experience
+- Dependable delivery and clear communication
+
+---
+
+### Let's build your next system
+Open for projects, ready to solve operational challenges with web systems and AI automation.  
+📩 Get in touch and let’s collaborate.
