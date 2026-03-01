@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
-import ProjectsPage from './ProjectsPage';
-import ProjectPlanner from './ProjectPlanner';
+import { Link, NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 
 const AUTH_STORAGE_KEY = 'app2_auth';
 const CLIENT_AUTH_STORAGE_KEY = 'app2_client_auth';
@@ -63,7 +61,7 @@ async function apiFetch(path, { token, method = 'GET', body } = {}) {
 // ============== HOME PAGE ==============
 function HomePage() {
   return (
-    <section className="card schedule-page">
+    <section className="card">
       <div className="hero-section">
         <h1>Field Service Suite</h1>
         <p className="hero-subtitle">Dispatch jobs, track technicians, and manage service requests from one workspace.</p>
@@ -327,7 +325,7 @@ function ClientPortalPage({ token, user, onLogout }) {
   const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (i.amount || 0), 0);
 
   return (
-    <section className="card schedule-page">
+    <section className="card">
       <div className="page-header">
         <div>
           <h1>My Service Portal</h1>
@@ -855,15 +853,6 @@ function SchedulePage({ token }) {
     }
   };
 
-  const getScheduleStatusClass = (status) => {
-    switch (status) {
-      case 'assigned': return 'schedule-assigned';
-      case 'in-progress': return 'schedule-progress';
-      case 'completed': return 'schedule-completed';
-      default: return 'schedule-new';
-    }
-  };
-
   // Group jobs by date
   const jobsByDate = useMemo(() => {
     const grouped = {};
@@ -880,7 +869,7 @@ function SchedulePage({ token }) {
   const sortedDates = Object.keys(jobsByDate).sort();
 
   return (
-    <section className="card schedule-page">
+    <section className="card">
       <div className="page-header">
         <h1>📅 Schedule / Calendar</h1>
         <div className="view-toggle">
@@ -918,7 +907,7 @@ function SchedulePage({ token }) {
               </h3>
               <div className="schedule-items">
                 {jobsByDate[date].map(job => (
-                  <div key={job.id} className={`schedule-item ${getScheduleStatusClass(job.status)}`}>
+                  <div key={job.id} className={`schedule-item ${getStatusColor(job.status)}`}>
                     <div className="schedule-time">
                       <span className="status-icon">{getStatusIcon(job.status)}</span>
                     </div>
@@ -945,25 +934,22 @@ function SchedulePage({ token }) {
       {!loading && viewMode === 'calendar' && schedule.length > 0 && (
         <div className="calendar-view">
           <div className="calendar-grid">
-            {sortedDates.map(date => {
-              const dateObj = new Date(date);
-              return (
+            {sortedDates.map(date => (
               <div key={date} className="calendar-day">
                 <div className="calendar-day-header">
-                  <span className="day-number">{dateObj.getDate()}</span>
-                  <span className="day-name">{dateObj.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                  <span className="day-month-year">{dateObj.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                  <span className="day-number">{new Date(date).getDate()}</span>
+                  <span className="day-name">{new Date(date).toLocaleDateString('en-US', { weekday: 'short' })}</span>
                 </div>
                 <div className="calendar-jobs">
                   {jobsByDate[date].map(job => (
-                    <div key={job.id} className={`calendar-job ${getScheduleStatusClass(job.status)}`}>
+                    <div key={job.id} className={`calendar-job ${getStatusColor(job.status)}`}>
                       <span className="job-id">{job.id}</span>
                       <span className="job-title">{job.title}</span>
                     </div>
                   ))}
                 </div>
               </div>
-            )})}
+            ))}
           </div>
         </div>
       )}
@@ -976,16 +962,13 @@ function JobsPage({ token, user }) {
   const [jobs, setJobs] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
   const [workingId, setWorkingId] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showJobDetails, setShowJobDetails] = useState(null);
-  const [worklogDrafts, setWorklogDrafts] = useState({});
   const canManageJobs = user.role === 'admin' || user.role === 'dispatcher';
   const isTechnician = user.role === 'technician';
-  const canEditWorklog = canManageJobs || isTechnician;
 
   const [draft, setDraft] = useState({
     title: '',
@@ -1022,8 +1005,10 @@ function JobsPage({ token, user }) {
 
   useEffect(() => {
     fetchJobs();
-    fetchCustomers();
-  }, [fetchJobs, fetchCustomers]);
+    if (canManageJobs) {
+      fetchCustomers();
+    }
+  }, [fetchJobs, fetchCustomers, canManageJobs]);
 
   const filteredJobs = useMemo(() => {
     let result = jobs;
@@ -1046,12 +1031,10 @@ function JobsPage({ token, user }) {
   const handleCreate = async (event) => {
     event.preventDefault();
     setError('');
-    setSuccess('');
     try {
       await apiFetch('/api/jobs', { token, method: 'POST', body: draft });
       setDraft({ title: '', location: '', priority: 'medium', assignedTo: 'technician', customerId: '', scheduledDate: '', notes: '', category: 'general' });
       await fetchJobs();
-      setSuccess('Job created successfully.');
     } catch (e) {
       setError(e.message || 'Failed to create job');
     }
@@ -1060,7 +1043,6 @@ function JobsPage({ token, user }) {
   const handleManagerUpdate = async (job) => {
     setWorkingId(job.id);
     setError('');
-    setSuccess('');
     try {
       await apiFetch(`/api/jobs/${encodeURIComponent(job.id)}`, {
         token,
@@ -1078,7 +1060,6 @@ function JobsPage({ token, user }) {
         },
       });
       await fetchJobs();
-      setSuccess(`Job ${job.id} saved.`);
     } catch (e) {
       setError(e.message || 'Failed to save job');
     } finally {
@@ -1099,72 +1080,33 @@ function JobsPage({ token, user }) {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
-    input.multiple = true;
     input.onchange = async (e) => {
-      const files = Array.from(e.target.files || []);
-      if (!files.length) return;
-
-      const maxBytes = 5 * 1024 * 1024;
-      const oversized = files.find((file) => file.size > maxBytes);
-      if (oversized) {
-        setError(`"${oversized.name}" is larger than 5MB.`);
-        return;
-      }
-
-      const readAsDataURL = (file) =>
-        new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => reject(new Error('Failed to read image file'));
-          reader.readAsDataURL(file);
-        });
-
-      setWorkingId(jobId);
-      setSuccess('');
-      try {
-        for (const file of files) {
-          const dataUrl = await readAsDataURL(file);
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
           await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/photos`, {
             token,
             method: 'POST',
-            body: { photo: dataUrl }
+            body: { photo: reader.result }
           });
+          await fetchJobs();
+        } catch (err) {
+          setError(err.message || 'Failed to upload photo');
         }
-        await fetchJobs();
-        setSuccess('Photo uploaded successfully.');
-      } catch (err) {
-        setError(err.message || 'Failed to upload photo');
-      } finally {
-        setWorkingId('');
-      }
+      };
+      reader.readAsDataURL(file);
     };
     input.click();
   };
 
-  const handlePhotoRemove = async (jobId, photoId) => {
-    setWorkingId(jobId);
-    setSuccess('');
-    try {
-      await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/photos/${encodeURIComponent(photoId)}`, {
-        token,
-        method: 'DELETE',
-      });
-      await fetchJobs();
-      setSuccess('Photo removed.');
-    } catch (err) {
-      setError(err.message || 'Failed to remove photo');
-    } finally {
-      setWorkingId('');
-    }
-  };
-
   const handleCheckin = async (jobId) => {
     setWorkingId(jobId);
-    setSuccess('');
     try {
       await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/checkin`, { token, method: 'POST' });
       await fetchJobs();
-      setSuccess(`Checked in to ${jobId}.`);
     } catch (e) {
       setError(e.message || 'Failed to check in');
     } finally {
@@ -1175,77 +1117,11 @@ function JobsPage({ token, user }) {
   const handleCheckout = async (jobId) => {
     const finalNotes = prompt('Enter job completion notes:') || '';
     setWorkingId(jobId);
-    setSuccess('');
     try {
       await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/checkout`, { token, method: 'POST', body: { notes: finalNotes } });
       await fetchJobs();
-      setSuccess(`Completed ${jobId}.`);
     } catch (e) {
       setError(e.message || 'Failed to check out');
-    } finally {
-      setWorkingId('');
-    }
-  };
-
-  const getWorklogDraft = (job) => {
-    const existing = worklogDrafts[job.id];
-    if (existing) return existing;
-    const partsText = Array.isArray(job.partsUsed) ? job.partsUsed.map((item) => String(item)).join(', ') : '';
-    const materialsText = Array.isArray(job.materialsUsed) ? job.materialsUsed.map((item) => String(item)).join(', ') : '';
-    return {
-      technicianNotes: job.technicianNotes || '',
-      partsText,
-      materialsText,
-    };
-  };
-
-  const updateWorklogDraft = (jobId, key, value) => {
-    setWorklogDrafts((prev) => ({
-      ...prev,
-      [jobId]: {
-        ...(prev[jobId] || {}),
-        [key]: value,
-      },
-    }));
-  };
-
-  const parseList = (text) =>
-    String(text || '')
-      .split(/[,\n]/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-  const formatUsageItem = (item) => {
-    if (item && typeof item === 'object') {
-      const name = String(item.name || '').trim();
-      const qty = item.qty ?? item.quantity;
-      if (name && qty !== undefined && qty !== null && qty !== '') return `${name} x${qty}`;
-      return name || JSON.stringify(item);
-    }
-    return String(item || '').trim();
-  };
-
-  const getLatestWorklog = (job) => (Array.isArray(job.worklog) && job.worklog.length > 0 ? job.worklog[0] : null);
-
-  const handleSaveWorklog = async (job) => {
-    const draftValues = getWorklogDraft(job);
-    setWorkingId(job.id);
-    setError('');
-    setSuccess('');
-    try {
-      await apiFetch(`/api/jobs/${encodeURIComponent(job.id)}/worklog`, {
-        token,
-        method: 'PATCH',
-        body: {
-          technicianNotes: draftValues.technicianNotes || '',
-          partsUsed: parseList(draftValues.partsText),
-          materialsUsed: parseList(draftValues.materialsText),
-        },
-      });
-      await fetchJobs();
-      setSuccess(`Worklog saved for ${job.id}.`);
-    } catch (e) {
-      setError(e.message || 'Failed to save worklog');
     } finally {
       setWorkingId('');
     }
@@ -1264,7 +1140,6 @@ function JobsPage({ token, user }) {
       </div>
 
       {error ? <div className="form-error-box">{error}</div> : null}
-      {success ? <div className="form-success-box">{success}</div> : null}
 
       {canManageJobs && (
         <form className="form-section job-create-form" onSubmit={handleCreate}>
@@ -1381,14 +1256,16 @@ function JobsPage({ token, user }) {
                   <span className={`category-tag ${job.category}`}>{job.category}</span>
                 </div>
                 <div className="job-actions-row">
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    onClick={() => setShowJobDetails(showJobDetails === job.id ? null : job.id)}
-                    title={showJobDetails === job.id ? 'Hide details' : 'Show details'}
-                  >
-                    {showJobDetails === job.id ? 'Hide' : 'Details'}
-                  </button>
+                  {canManageJobs && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      onClick={() => setShowJobDetails(showJobDetails === job.id ? null : job.id)}
+                      title="View Details"
+                    >
+                      {showJobDetails === job.id ? '▲' : '▼'}
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1404,16 +1281,6 @@ function JobsPage({ token, user }) {
 
               {job.customerId && (
                 <p className="job-customer">Customer: {getCustomerName(job.customerId)}</p>
-              )}
-
-              {getLatestWorklog(job) && (
-                <div className="job-worklog-preview">
-                  <strong>Latest update:</strong>{' '}
-                  <span>{new Date(getLatestWorklog(job).at).toLocaleString()}</span>
-                  {getLatestWorklog(job).technicianNotes ? (
-                    <p>{getLatestWorklog(job).technicianNotes}</p>
-                  ) : null}
-                </div>
               )}
 
               {showJobDetails === job.id && (
@@ -1488,92 +1355,12 @@ function JobsPage({ token, user }) {
                     </div>
                   )}
 
-                  <div className="job-worklog">
-                    <strong>Worklog</strong>
-                    {canEditWorklog ? (
-                      <>
-                        <textarea
-                          rows={3}
-                          placeholder="Technician notes"
-                          value={getWorklogDraft(job).technicianNotes}
-                          onChange={(e) => updateWorklogDraft(job.id, 'technicianNotes', e.target.value)}
-                        />
-                        <input
-                          type="text"
-                          placeholder="Parts used (comma separated)"
-                          value={getWorklogDraft(job).partsText}
-                          onChange={(e) => updateWorklogDraft(job.id, 'partsText', e.target.value)}
-                        />
-                        <input
-                          type="text"
-                          placeholder="Materials used (comma separated)"
-                          value={getWorklogDraft(job).materialsText}
-                          onChange={(e) => updateWorklogDraft(job.id, 'materialsText', e.target.value)}
-                        />
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          onClick={() => handleSaveWorklog(job)}
-                          disabled={workingId === job.id}
-                        >
-                          {workingId === job.id ? 'Saving...' : 'Save Worklog'}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <p>{job.technicianNotes || 'No technician notes yet.'}</p>
-                        <p><strong>Parts:</strong> {Array.isArray(job.partsUsed) && job.partsUsed.length ? job.partsUsed.map(formatUsageItem).filter(Boolean).join(', ') : 'None'}</p>
-                        <p><strong>Materials:</strong> {Array.isArray(job.materialsUsed) && job.materialsUsed.length ? job.materialsUsed.map(formatUsageItem).filter(Boolean).join(', ') : 'None'}</p>
-                      </>
-                    )}
-
-                    {Array.isArray(job.worklog) && job.worklog.length > 0 && (
-                      <div className="job-worklog-history">
-                        <strong>Recent timeline</strong>
-                        {job.worklog.slice(0, 3).map((entry, idx) => (
-                          <div key={`${job.id}-worklog-${idx}`} className="job-worklog-entry">
-                            <div className="job-worklog-entry-head">
-                              <span>{new Date(entry.at || Date.now()).toLocaleString()}</span>
-                              <span>{entry.by || 'unknown'}</span>
-                            </div>
-                            {entry.technicianNotes ? <p>{entry.technicianNotes}</p> : null}
-                            <p>
-                              <strong>Parts:</strong>{' '}
-                              {Array.isArray(entry.partsUsed) && entry.partsUsed.length
-                                ? entry.partsUsed.map(formatUsageItem).filter(Boolean).join(', ')
-                                : 'None'}
-                            </p>
-                            <p>
-                              <strong>Materials:</strong>{' '}
-                              {Array.isArray(entry.materialsUsed) && entry.materialsUsed.length
-                                ? entry.materialsUsed.map(formatUsageItem).filter(Boolean).join(', ')
-                                : 'None'}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                   {job.photos && job.photos.length > 0 && (
                     <div className="job-photos">
                       <strong>Photos:</strong>
                       <div className="photos-grid">
                         {job.photos.map((photo, idx) => (
-                          <div key={photo.id || idx} className="photo-item">
-                            <img src={photo.data || photo} alt={`Job photo ${idx + 1}`} />
-                            {canManageJobs ? (
-                              <button
-                                type="button"
-                                className="photo-delete-btn"
-                                onClick={() => handlePhotoRemove(job.id, photo.id || String(idx))}
-                                title="Remove photo"
-                                disabled={workingId === job.id}
-                              >
-                                ×
-                              </button>
-                            ) : null}
-                          </div>
+                          <img key={idx} src={photo.data || photo} alt={`Job photo ${idx + 1}`} />
                         ))}
                       </div>
                     </div>
@@ -1608,7 +1395,6 @@ function JobsPage({ token, user }) {
                       type="button"
                       className="btn-secondary"
                       onClick={() => handlePhotoUpload(job.id)}
-                      disabled={workingId === job.id}
                     >
                       📷 Add Photo
                     </button>
@@ -1989,13 +1775,8 @@ function ExportPage({ token }) {
       });
       
       if (!response.ok) {
-        const contentType = response.headers.get('content-type') || '';
-        if (contentType.includes('application/json')) {
-          const data = await response.json();
-          throw new Error(data.error || 'Export failed');
-        }
-        const text = await response.text();
-        throw new Error(text || 'Export failed');
+        const data = await response.json();
+        throw new Error(data.error || 'Export failed');
       }
 
       const blob = await response.blob();
@@ -2062,13 +1843,11 @@ function ProtectedRoute({ isAuthed, children }) {
 
 // ============== MAIN APP ==============
 export default function App() {
-  const location = useLocation();
   const [auth, setAuth] = useState(() => loadStoredAuth());
   const [clientAuth, setClientAuth] = useState(() => loadStoredClientAuth());
   const [darkMode, setDarkMode] = useState(() => loadStoredDarkMode());
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isAuthed = Boolean(auth && auth.token && auth.user);
   const isClientAuthed = Boolean(clientAuth && clientAuth.token && clientAuth.user);
 
@@ -2154,49 +1933,27 @@ export default function App() {
   const canManageCustomers = auth?.user?.role === 'admin' || auth?.user?.role === 'dispatcher';
   const unreadCount = notifications.filter(n => !n.read).length;
 
-    const navLinks = useMemo(() => (
+  const navLinks = useMemo(() => (
     <>
-      <NavLink to="/" end onClick={() => setMobileNavOpen(false)}>Home</NavLink>
-      {isAuthed ? <NavLink to="/dashboard" onClick={() => setMobileNavOpen(false)}>Dashboard</NavLink> : null}
-      {isAuthed ? <NavLink to="/jobs" onClick={() => setMobileNavOpen(false)}>Jobs</NavLink> : null}
-      {isAuthed ? <NavLink to="/schedule" onClick={() => setMobileNavOpen(false)}>Schedule</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/customers" onClick={() => setMobileNavOpen(false)}>Customers</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/invoices" onClick={() => setMobileNavOpen(false)}>Invoices</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/activity" onClick={() => setMobileNavOpen(false)}>Activity</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/projects" onClick={() => setMobileNavOpen(false)}>Projects</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/project-planner" onClick={() => setMobileNavOpen(false)}>Planner</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/export" onClick={() => setMobileNavOpen(false)}>Export</NavLink> : null}
-      {!isAuthed ? <NavLink to="/login" onClick={() => setMobileNavOpen(false)}>Login</NavLink> : null}
+      <NavLink to="/" end>🏠 Home</NavLink>
+      {isAuthed ? <NavLink to="/dashboard">📊 Dashboard</NavLink> : null}
+      {isAuthed ? <NavLink to="/jobs">📋 Jobs</NavLink> : null}
+      {isAuthed ? <NavLink to="/schedule">📅 Schedule</NavLink> : null}
+      {isAuthed && canManageCustomers ? <NavLink to="/customers">👥 Customers</NavLink> : null}
+      {isAuthed && canManageCustomers ? <NavLink to="/invoices">📄 Invoices</NavLink> : null}
+      {isAuthed && canManageCustomers ? <NavLink to="/activity">📝 Activity</NavLink> : null}
+      {isAuthed && canManageCustomers ? <NavLink to="/export">📊 Export</NavLink> : null}
+      {!isAuthed ? <NavLink to="/login">🔐 Login</NavLink> : null}
     </>
   ), [isAuthed, canManageCustomers]);
-
-  useEffect(() => {
-    setMobileNavOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    document.body.style.overflow = mobileNavOpen ? 'hidden' : '';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [mobileNavOpen]);
 
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand-section">
-          <button
-            type="button"
-            className="btn-icon mobile-menu-btn"
-            onClick={() => setMobileNavOpen((prev) => !prev)}
-            aria-label="Toggle navigation menu"
-            aria-expanded={mobileNavOpen}
-          >
-            {mobileNavOpen ? '✕' : '☰'}
-          </button>
-          <Link to="/" className="brand">Field Service Suite</Link>
+          <Link to="/" className="brand">🔧 Field Service Suite</Link>
         </div>
-        <nav className="nav-links desktop-nav">
+        <nav className="nav-links">
           {navLinks}
         </nav>
         <div className="user-section">
@@ -2221,9 +1978,7 @@ export default function App() {
           {isAuthed ? (
             <div className="user-menu">
               <span className="user-name">{auth.user.username}</span>
-              {String(auth.user.role || '').toLowerCase() !== String(auth.user.username || '').toLowerCase() ? (
-                <span className="user-role">{auth.user.role}</span>
-              ) : null}
+              <span className="user-role">{auth.user.role}</span>
               <button type="button" className="btn-secondary" onClick={logout}>
                 Logout
               </button>
@@ -2231,33 +1986,6 @@ export default function App() {
           ) : null}
         </div>
       </header>
-
-      <div
-        className={`mobile-nav-overlay ${mobileNavOpen ? 'open' : ''}`}
-        onClick={() => setMobileNavOpen(false)}
-      />
-      <aside className={`mobile-nav-drawer ${mobileNavOpen ? 'open' : ''}`}>
-        <div className="mobile-nav-header">
-          <strong>Navigation</strong>
-          <button type="button" className="btn-icon" onClick={() => setMobileNavOpen(false)} aria-label="Close navigation">
-            ✕
-          </button>
-        </div>
-        <nav className="mobile-nav-links">
-          {navLinks}
-        </nav>
-        {isAuthed ? (
-          <div className="mobile-nav-account">
-            <div className="mobile-account-meta">
-              <strong>{auth.user.username}</strong>
-              <span>{auth.user.role}</span>
-            </div>
-            <button type="button" className="btn-secondary btn-full" onClick={() => { setMobileNavOpen(false); logout(); }}>
-              Logout
-            </button>
-          </div>
-        ) : null}
-      </aside>
 
       {showNotifications && notifications.length > 0 && (
         <div className="notifications-panel">
@@ -2267,9 +1995,7 @@ export default function App() {
               <div key={notif.id} className={`notification-item ${notif.read ? 'read' : 'unread'}`}>
                 <strong>{notif.title}</strong>
                 <p>{notif.message}</p>
-                <span className="notification-time">
-                  {new Date(notif.createdAt || notif.timestamp || Date.now()).toLocaleString()}
-                </span>
+                <span className="notification-time">{new Date(notif.createdAt).toLocaleString()}</span>
               </div>
             ))}
           </div>
@@ -2329,30 +2055,6 @@ export default function App() {
             )}
           />
           <Route
-            path="/projects"
-            element={(
-              <ProtectedRoute isAuthed={isAuthed}>
-                <ProjectsPage token={auth?.token} />
-              </ProtectedRoute>
-            )}
-          />
-          <Route
-            path="/project-planner"
-            element={(
-              <ProtectedRoute isAuthed={isAuthed}>
-                <ProjectPlanner token={auth?.token} />
-              </ProtectedRoute>
-            )}
-          />
-          <Route
-            path="/project-planner/:projectId"
-            element={(
-              <ProtectedRoute isAuthed={isAuthed}>
-                <ProjectPlanner token={auth?.token} />
-              </ProtectedRoute>
-            )}
-          />
-          <Route
             path="/export"
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
@@ -2377,6 +2079,3 @@ export default function App() {
     </div>
   );
 }
-
-
-

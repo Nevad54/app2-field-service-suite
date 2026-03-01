@@ -1,2134 +1,1511 @@
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
-
-const tryRequire = (name) => {
-  try {
-    return require(name);
-  } catch (_) {
-    return null;
-  }
-};
-
-const dotenv = tryRequire('dotenv');
-if (dotenv) dotenv.config();
-
-const mongoose = tryRequire('mongoose');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3002;
+const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const JOB_UPLOADS_DIR = path.join(UPLOADS_DIR, 'jobs');
+const DATA_DIR = path.join(__dirname, 'data');
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
+app.use('/uploads', express.static(UPLOADS_DIR));
 
-const emitEvent = (event, data) => {
-  // Socket.io placeholder
+fs.mkdirSync(JOB_UPLOADS_DIR, { recursive: true });
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// ============== USERS ==============
+let users = [
+ { id: 'u-admin', username: 'admin', password: '1111', role: 'admin' },
+ { id: 'u-dispatch', username: 'dispatcher', password: '1111', role: 'dispatcher' },
+ { id: 'u-tech', username: 'technician', password: '1111', role: 'technician' },
+ { id: 'u-client', username: 'client', password: '1111', role: 'client' },
+];
+
+// ============== CUSTOMERS DATA (2026) ==============
+let customers = [
+ { id: 'CUST-001', name: 'Acme Corporation', email: 'contact@acme.com', phone: '555-0101', address: '123 Business Ave, Downtown', created_at: '2026-01-05T10:00:00Z' },
+ { id: 'CUST-002', name: 'TechStart Inc', email: 'info@techstart.io', phone: '555-0102', address: '456 Innovation Blvd, Tech Park', created_at: '2026-01-10T14:30:00Z' },
+ { id: 'CUST-003', name: 'Global Logistics', email: 'ops@globallog.com', phone: '555-0103', address: '789 Harbor Road, Port District', created_at: '2026-01-15T09:00:00Z' },
+ { id: 'CUST-004', name: 'Metro Healthcare', email: 'facilities@metrohealth.org', phone: '555-0104', address: '321 Medical Center Dr, Health District', created_at: '2026-01-20T11:00:00Z' },
+ { id: 'CUST-005', name: 'Riverside School District', email: 'maintenance@riverside.edu', phone: '555-0105', address: '654 Education Way, Riverside', created_at: '2026-02-01T08:00:00Z' },
+ { id: 'CUST-006', name: 'Sunset Hotels', email: 'ops@sunsethotels.com', phone: '555-0106', address: '987 Resort Lane, Beachfront', created_at: '2026-02-10T13:00:00Z' },
+ { id: 'CUST-007', name: 'Midwest Manufacturing', email: 'plant@midwestmfg.com', phone: '555-0107', address: '147 Industrial Pkwy, Commerce City', created_at: '2026-02-15T10:30:00Z' },
+ { id: 'CUST-008', name: 'Evergreen Properties', email: 'maintenance@evergreen.com', phone: '555-0108', address: '258 Green Valley Rd, Suburbs', created_at: '2026-02-20T15:00:00Z' },
+];
+
+// ============== JOBS DATA (2026) ==============
+let jobs = [
+ { id: 'JOB-1001', title: 'HVAC preventive maintenance', status: 'completed', priority: 'medium', assignedTo: 'technician', location: 'Building A - Acme Corp', scheduledDate: '2026-01-20', customerId: 'CUST-001', category: 'maintenance', notes: 'Quarterly maintenance completed', created_at: '2026-01-15T08:00:00Z' },
+ { id: 'JOB-1002', title: 'Generator inspection', status: 'completed', priority: 'high', assignedTo: 'technician', location: 'Warehouse North - Global Logistics', scheduledDate: '2026-01-25', customerId: 'CUST-003', category: 'inspection', notes: 'All systems operational', created_at: '2026-01-18T09:00:00Z' },
+ { id: 'JOB-1003', title: 'Electrical panel audit', status: 'in-progress', priority: 'high', assignedTo: 'technician', location: 'Main Plant - Midwest Mfg', scheduledDate: '2026-02-15', customerId: 'CUST-007', category: 'audit', notes: 'In progress - 60% complete', created_at: '2026-02-10T10:00:00Z' },
+ { id: 'JOB-1004', title: 'Plumbing system check', status: 'assigned', priority: 'medium', assignedTo: 'technician', location: 'TechStart Office', scheduledDate: '2026-02-20', customerId: 'CUST-002', category: 'maintenance', notes: 'Scheduled for next week', created_at: '2026-02-12T11:00:00Z' },
+ { id: 'JOB-1005', title: 'Fire safety inspection', status: 'new', priority: 'high', assignedTo: '', location: 'Metro Healthcare', scheduledDate: '2026-02-25', customerId: 'CUST-004', category: 'safety', notes: 'Annual inspection required', created_at: '2026-02-14T08:00:00Z' },
+ { id: 'JOB-1006', title: 'Elevator maintenance', status: 'assigned', priority: 'medium', assignedTo: 'technician', location: 'Sunset Hotels - Main Building', scheduledDate: '2026-02-18', customerId: 'CUST-006', category: 'maintenance', notes: 'Quarterly maintenance', created_at: '2026-02-08T14:00:00Z' },
+ { id: 'JOB-1007', title: 'Security system upgrade', status: 'in-progress', priority: 'high', assignedTo: 'technician', location: 'Riverside School District', scheduledDate: '2026-02-10', customerId: 'CUST-005', category: 'installation', notes: 'Installing new access control', created_at: '2026-02-05T09:00:00Z' },
+ { id: 'JOB-1008', title: 'HVAC repair - cooling issue', status: 'new', priority: 'urgent', assignedTo: '', location: 'Evergreen Properties', scheduledDate: '2026-02-22', customerId: 'CUST-008', category: 'repair', notes: 'AC not cooling properly', created_at: '2026-02-15T16:00:00Z' },
+];
+
+const normalizeJob = (job) => {
+ if (!job) return job;
+ if (!Array.isArray(job.photos)) job.photos = [];
+ if (!Array.isArray(job.partsUsed)) job.partsUsed = [];
+ if (!Array.isArray(job.materialsUsed)) job.materialsUsed = [];
+ if (!Array.isArray(job.worklog)) job.worklog = [];
+ if (typeof job.technicianNotes !== 'string') job.technicianNotes = '';
+ if (typeof job.completionNotes !== 'string') job.completionNotes = job.completionNotes || '';
+ if (job.projectId === undefined) job.projectId = null;
+ if (job.taskId === undefined) job.taskId = null;
+ if (!job.updated_at) job.updated_at = job.created_at || new Date().toISOString();
+ return job;
 };
 
-const defaultUsers = [
-  { id: 'u-admin', username: process.env.ADMIN_USER || 'admin', password: process.env.ADMIN_PASS || '1111', role: 'admin' },
-  { id: 'u-dispatch', username: process.env.DISPATCH_USER || 'dispatcher', password: process.env.DISPATCH_PASS || '1111', role: 'dispatcher' },
-  { id: 'u-tech', username: process.env.TECH_USER || 'technician', password: process.env.TECH_PASS || '1111', role: 'technician' },
-  { id: 'u-client', username: process.env.CLIENT_USER || 'client', password: process.env.CLIENT_PASS || '1111', role: 'client' },
-];
-
-const fallbackUsers = [...defaultUsers];
-const fallbackJobs = [
-  { id: 'JOB-1001', title: 'HVAC preventive maintenance', status: 'new', priority: 'medium', assignedTo: 'technician', location: 'Building A - Floor 1', customerId: 'CUST-001', scheduledDate: '2025-01-20', scheduledTime: '09:00', notes: 'Annual maintenance check', checkinTime: null, checkoutTime: null, category: 'hvac', photos: [], invoiceId: null },
-  { id: 'JOB-1002', title: 'Generator inspection', status: 'assigned', priority: 'high', assignedTo: 'technician', location: 'Warehouse North', customerId: 'CUST-002', scheduledDate: '2025-01-21', scheduledTime: '10:00', notes: 'Quarterly inspection', checkinTime: null, checkoutTime: null, category: 'electrical', photos: [], invoiceId: null },
-  { id: 'JOB-1003', title: 'Electrical panel audit', status: 'in-progress', priority: 'high', assignedTo: 'technician', location: 'Main Plant', customerId: 'CUST-001', scheduledDate: '2025-01-18', scheduledTime: '08:00', notes: 'Started inspection', checkinTime: '2025-01-18T09:00:00Z', checkoutTime: null, category: 'electrical', photos: [], invoiceId: null },
-  { id: 'JOB-1004', title: 'Plumbing repair - leak fix', status: 'new', priority: 'high', assignedTo: 'technician', location: 'Office Building B', customerId: 'CUST-003', scheduledDate: '2025-01-22', scheduledTime: '14:00', notes: 'Kitchen sink leak', checkinTime: null, checkoutTime: null, category: 'plumbing', photos: [], invoiceId: null },
-  { id: 'JOB-1005', title: 'HVAC filter replacement', status: 'assigned', priority: 'low', assignedTo: 'technician', location: 'Shopping Mall', customerId: 'CUST-004', scheduledDate: '2025-01-23', scheduledTime: '11:00', notes: 'Filter change routine', checkinTime: null, checkoutTime: null, category: 'hvac', photos: [], invoiceId: null },
-  { id: 'JOB-1006', title: 'Electrical wiring installation', status: 'new', priority: 'medium', assignedTo: 'technician', location: 'Factory Zone C', customerId: 'CUST-005', scheduledDate: '2025-01-24', scheduledTime: '09:00', notes: 'New equipment wiring', checkinTime: null, checkoutTime: null, category: 'electrical', photos: [], invoiceId: null },
-  { id: 'JOB-1007', title: 'Air conditioning repair', status: 'completed', priority: 'high', assignedTo: 'technician', location: 'Hotel Main', customerId: 'CUST-006', scheduledDate: '2025-01-17', scheduledTime: '10:00', notes: 'Emergency repair completed', checkinTime: '2025-01-17T10:00:00Z', checkoutTime: '2025-01-17T14:00:00Z', category: 'hvac', photos: [], invoiceId: null },
-  { id: 'JOB-1008', title: 'Boiler maintenance', status: 'assigned', priority: 'medium', assignedTo: 'technician', location: 'Hospital Wing A', customerId: 'CUST-007', scheduledDate: '2025-01-25', scheduledTime: '08:00', notes: 'Annual boiler service', checkinTime: null, checkoutTime: null, category: 'hvac', photos: [], invoiceId: null },
-  { id: 'JOB-1009', title: 'Security system installation', status: 'new', priority: 'high', assignedTo: 'technician', location: 'Corporate HQ', customerId: 'CUST-008', scheduledDate: '2025-01-27', scheduledTime: '13:00', notes: 'New CCTV cameras', checkinTime: null, checkoutTime: null, category: 'installation', photos: [], invoiceId: null },
-  { id: 'JOB-1010', title: 'Fire alarm inspection', status: 'in-progress', priority: 'high', assignedTo: 'technician', location: 'School Building', customerId: 'CUST-009', scheduledDate: '2025-01-19', scheduledTime: '09:00', notes: 'Annual fire safety check', checkinTime: '2025-01-19T09:00:00Z', checkoutTime: null, category: 'inspection', photos: [], invoiceId: null },
-];
-
-const fallbackCustomers = [
-  { id: 'CUST-001', name: 'Acme Corporation', email: 'contact@acme.com', phone: '555-0100', address: '123 Main St, City', notes: 'Primary client - large building' },
-  { id: 'CUST-002', name: 'Tech Industries', email: 'info@techind.com', phone: '555-0200', address: '456 Industrial Blvd', notes: 'Warehouse location - 24/7 operations' },
-  { id: 'CUST-003', name: 'Global Services Ltd', email: 'support@globalservices.com', phone: '555-0300', address: '789 Commerce Ave', notes: 'Office complex' },
-  { id: 'CUST-004', name: 'Mega Mall Inc', email: 'facilities@megamall.com', phone: '555-0400', address: '100 Shopping Center Dr', notes: 'Large shopping center' },
-  { id: 'CUST-005', name: 'Industrial Factory Co', email: 'maintenance@factory.com', phone: '555-0500', address: '200 Manufacturing Way', notes: 'Manufacturing facility' },
-  { id: 'CUST-006', name: 'Grand Hotel', email: 'engineering@grandhotel.com', phone: '555-0600', address: '500 Luxury Lane', notes: '5-star hotel - VIP client' },
-  { id: 'CUST-007', name: 'City Hospital', email: 'facilities@cityhospital.org', phone: '555-0700', address: '300 Medical Center Blvd', notes: 'Healthcare facility - critical' },
-  { id: 'CUST-008', name: 'Corporate Enterprises', email: 'it@corporate.com', phone: '555-0800', address: '400 Business Tower', notes: 'Corporate headquarters' },
-  { id: 'CUST-009', name: 'Public School District', email: 'maintenance@school district.org', phone: '555-0900', address: '50 Education Way', notes: 'Multiple school locations' },
-  { id: 'CUST-010', name: 'Sports Arena Complex', email: 'ops@sportsarena.com', phone: '555-1000', address: '750 Stadium Drive', notes: 'Entertainment venue' },
-];
-
-const fallbackInvoices = [
-  { id: 'INV-001', jobId: 'JOB-1001', customerId: 'CUST-001', amount: 150.00, status: 'paid', items: [{ description: 'HVAC Maintenance', quantity: 1, rate: 150 }], createdAt: '2025-01-10T10:00:00Z', paidAt: '2025-01-11T14:00:00Z' },
-];
-
-const fallbackActivityLogs = [
-  { id: 'LOG-001', action: 'job_created', description: 'Job JOB-1001 created', userId: 'admin', timestamp: '2025-01-10T10:00:00Z' },
-  { id: 'LOG-002', action: 'job_assigned', description: 'Job JOB-1001 assigned to technician', userId: 'dispatcher', timestamp: '2025-01-10T11:00:00Z' },
-];
-
-// ============ PROJECTS & TASKS DATA ============
-const fallbackProjects = [
-  { 
-    id: 'PROJ-001', 
-    title: 'Office Building Renovation', 
-    description: 'Complete renovation of 3-story office building including HVAC, electrical, and plumbing', 
-    startDate: '2025-01-15', 
-    targetDeadline: '2025-03-15', 
-    priority: 'high', 
-    status: 'active', 
-    progress: 35,
-    createdBy: 'admin',
-    createdAt: '2025-01-10T10:00:00Z',
-    updatedAt: '2025-01-18T14:00:00Z'
-  },
-  { 
-    id: 'PROJ-002', 
-    title: 'Shopping Mall HVAC Upgrade', 
-    description: 'Upgrade HVAC systems in shopping mall common areas', 
-    startDate: '2025-01-20', 
-    targetDeadline: '2025-02-28', 
-    priority: 'medium', 
-    status: 'active', 
-    progress: 15,
-    createdBy: 'admin',
-    createdAt: '2025-01-12T09:00:00Z',
-    updatedAt: '2025-01-17T11:00:00Z'
-  },
-  { 
-    id: 'PROJ-003', 
-    title: 'Warehouse Electrical Audit', 
-    description: 'Complete electrical system audit and compliance check for warehouse', 
-    startDate: '2025-01-01', 
-    targetDeadline: '2025-01-31', 
-    priority: 'high', 
-    status: 'completed', 
-    progress: 100,
-    createdBy: 'dispatcher',
-    createdAt: '2025-01-05T08:00:00Z',
-    updatedAt: '2025-01-25T16:00:00Z'
-  },
-];
-
-const fallbackTasks = [
-  // Tasks for PROJ-001 - with datetime support
-  { id: 'TASK-001', projectId: 'PROJ-001', name: 'Site assessment', description: 'Initial site assessment and planning', assignedTo: 'technician', startDate: '2025-01-15', dueDate: '2025-01-17', plannedStart: '2025-01-15T09:00:00', plannedEnd: '2025-01-17T17:00:00', actualStart: '2025-01-15T09:30:00', actualEnd: '2025-01-17T16:00:00', status: 'completed', progress: 100, dependencies: [], notes: '' },
-  { id: 'TASK-002', projectId: 'PROJ-001', name: 'HVAC installation', description: 'Install new HVAC units', assignedTo: 'technician', startDate: '2025-01-20', dueDate: '2025-02-10', plannedStart: '2025-01-20T08:00:00', plannedEnd: '2025-02-10T18:00:00', actualStart: '2025-01-20T08:15:00', actualEnd: null, status: 'in-progress', progress: 40, dependencies: ['TASK-001'], notes: 'In progress' },
-  { id: 'TASK-003', projectId: 'PROJ-001', name: 'Electrical wiring', description: 'Complete electrical wiring for new units', assignedTo: 'technician', startDate: '2025-02-01', dueDate: '2025-02-20', plannedStart: '2025-02-01T09:00:00', plannedEnd: '2025-02-20T17:00:00', actualStart: null, actualEnd: null, status: 'pending', progress: 0, dependencies: ['TASK-001'], notes: '' },
-  { id: 'TASK-004', projectId: 'PROJ-001', name: 'Plumbing connections', description: 'Connect plumbing to new HVAC', assignedTo: 'technician', startDate: '2025-02-15', dueDate: '2025-03-01', plannedStart: '2025-02-15T08:00:00', plannedEnd: '2025-03-01T17:00:00', actualStart: null, actualEnd: null, status: 'pending', progress: 0, dependencies: ['TASK-002'], notes: '' },
-  { id: 'TASK-005', projectId: 'PROJ-001', name: 'Final inspection', description: 'Final inspection and testing', assignedTo: 'technician', startDate: '2025-03-05', dueDate: '2025-03-15', plannedStart: '2025-03-05T09:00:00', plannedEnd: '2025-03-15T16:00:00', actualStart: null, actualEnd: null, status: 'pending', progress: 0, dependencies: ['TASK-003', 'TASK-004'], notes: '' },
-  // Tasks for PROJ-002
-  { id: 'TASK-006', projectId: 'PROJ-002', name: 'Equipment procurement', description: 'Order HVAC equipment', assignedTo: 'admin', startDate: '2025-01-20', dueDate: '2025-01-25', plannedStart: '2025-01-20T10:00:00', plannedEnd: '2025-01-25T15:00:00', actualStart: '2025-01-20T10:30:00', actualEnd: '2025-01-25T14:00:00', status: 'completed', progress: 100, dependencies: [], notes: '' },
-  { id: 'TASK-007', projectId: 'PROJ-002', name: 'Installation planning', description: 'Plan installation schedule', assignedTo: 'dispatcher', startDate: '2025-01-25', dueDate: '2025-01-28', plannedStart: '2025-01-25T09:00:00', plannedEnd: '2025-01-28T17:00:00', actualStart: '2025-01-25T09:00:00', actualEnd: null, status: 'in-progress', progress: 50, dependencies: ['TASK-006'], notes: '' },
-  { id: 'TASK-008', projectId: 'PROJ-002', name: 'Unit installation', description: 'Install HVAC units', assignedTo: 'technician', startDate: '2025-02-01', dueDate: '2025-02-20', plannedStart: '2025-02-01T08:00:00', plannedEnd: '2025-02-20T18:00:00', actualStart: null, actualEnd: null, status: 'pending', progress: 0, dependencies: ['TASK-007'], notes: '' },
-  // Tasks for PROJ-003
-  { id: 'TASK-009', projectId: 'PROJ-003', name: 'Document existing systems', description: 'Document all existing electrical systems', assignedTo: 'technician', startDate: '2025-01-01', dueDate: '2025-01-10', plannedStart: '2025-01-01T09:00:00', plannedEnd: '2025-01-10T17:00:00', actualStart: '2025-01-01T09:00:00', actualEnd: '2025-01-10T16:30:00', status: 'completed', progress: 100, dependencies: [], notes: '' },
-  { id: 'TASK-010', projectId: 'PROJ-003', name: 'Compliance check', description: 'Check compliance with regulations', assignedTo: 'technician', startDate: '2025-01-11', dueDate: '2025-01-25', plannedStart: '2025-01-11T09:00:00', plannedEnd: '2025-01-25T17:00:00', actualStart: '2025-01-11T09:30:00', actualEnd: '2025-01-25T18:00:00', status: 'completed', progress: 100, dependencies: ['TASK-009'], notes: '' },
-  { id: 'TASK-011', projectId: 'PROJ-003', name: 'Final report', description: 'Generate final audit report', assignedTo: 'admin', startDate: '2025-01-26', dueDate: '2025-01-31', plannedStart: '2025-01-26T09:00:00', plannedEnd: '2025-01-31T15:00:00', actualStart: '2025-01-26T09:00:00', actualEnd: '2025-01-31T14:00:00', status: 'completed', progress: 100, dependencies: ['TASK-010'], notes: '' },
-];
-
-const nextProjectIdFromList = (list = []) => {
-  const max = list.reduce((acc, item) => {
-    const n = Number(String(item.id || '').replace('PROJ-', '')) || 0;
-    return n > acc ? n : acc;
-  }, 0);
-  return `PROJ-${String(max + 1).padStart(3, '0')}`;
+// Persist photos metadata to JSON file
+const persistPhotosForJob = (jobId, photos) => {
+ try {
+   const filePath = path.join(DATA_DIR, 'job-photos.json');
+   let jobPhotos = {};
+   if (fs.existsSync(filePath)) {
+     jobPhotos = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+   }
+   jobPhotos[jobId] = photos;
+   fs.writeFileSync(filePath, JSON.stringify(jobPhotos, null, 2));
+ } catch (err) {
+   console.error('Error persisting photos:', err);
+ }
 };
 
-const nextTaskIdFromList = (list = []) => {
-  const max = list.reduce((acc, item) => {
-    const n = Number(String(item.id || '').replace('TASK-', '')) || 0;
-    return n > acc ? n : acc;
-  }, 0);
-  return `TASK-${String(max + 1).padStart(3, '0')}`;
+jobs.forEach((job) => normalizeJob(job));
+
+// ============== INVOICES DATA (2026) ==============
+let invoices = [
+ { id: 'INV-2026-001', jobId: 'JOB-1001', customerId: 'CUST-001', amount: 450.00, status: 'paid', issuedDate: '2026-01-20', paidDate: '2026-01-25', description: 'HVAC preventive maintenance - Q1 2026' },
+ { id: 'INV-2026-002', jobId: 'JOB-1002', customerId: 'CUST-003', amount: 275.00, status: 'paid', issuedDate: '2026-01-25', paidDate: '2026-01-28', description: 'Generator inspection services' },
+ { id: 'INV-2026-003', jobId: 'JOB-1003', customerId: 'CUST-007', amount: 850.00, status: 'pending', issuedDate: '2026-02-15', paidDate: null, description: 'Electrical panel audit - progress billing' },
+ { id: 'INV-2026-004', jobId: 'JOB-1006', customerId: 'CUST-006', amount: 600.00, status: 'pending', issuedDate: '2026-02-18', paidDate: null, description: 'Elevator maintenance - Q1 2026' },
+ { id: 'INV-2026-005', jobId: 'JOB-1007', customerId: 'CUST-005', amount: 1200.00, status: 'paid', issuedDate: '2026-02-10', paidDate: '2026-02-12', description: 'Security system installation - deposit' },
+ { id: 'INV-2026-006', jobId: 'JOB-1004', customerId: 'CUST-002', amount: 350.00, status: 'pending', issuedDate: '2026-02-20', paidDate: null, description: 'Plumbing system check' },
+];
+
+// ============== ACTIVITY LOGS (2026) ==============
+const activityLogs = [
+ { id: 'act-001', entity_type: 'job', entity_id: 'JOB-1001', user_id: 'admin', action: 'created', description: 'Created job: HVAC preventive maintenance', timestamp: '2026-01-15T08:00:00Z' },
+ { id: 'act-002', entity_type: 'job', entity_id: 'JOB-1001', user_id: 'admin', action: 'status_changed', description: 'Job JOB-1001 status changed to completed', timestamp: '2026-01-20T10:30:00Z' },
+ { id: 'act-003', entity_type: 'invoice', entity_id: 'INV-2026-001', user_id: 'admin', action: 'created', description: 'Invoice INV-2026-001 created for $450.00', timestamp: '2026-01-20T11:00:00Z' },
+ { id: 'act-004', entity_type: 'invoice', entity_id: 'INV-2026-001', user_id: 'admin', action: 'paid', description: 'Invoice INV-2026-001 paid in full', timestamp: '2026-01-25T14:00:00Z' },
+ { id: 'act-005', entity_type: 'job', entity_id: 'JOB-1002', user_id: 'admin', action: 'created', description: 'Created job: Generator inspection', timestamp: '2026-01-18T09:00:00Z' },
+ { id: 'act-006', entity_type: 'job', entity_id: 'JOB-1003', user_id: 'admin', action: 'created', description: 'Created job: Electrical panel audit', timestamp: '2026-02-10T10:00:00Z' },
+ { id: 'act-007', entity_type: 'job', entity_id: 'JOB-1003', user_id: 'technician', action: 'status_changed', description: 'Job JOB-1003 status changed to in-progress', timestamp: '2026-02-12T09:00:00Z' },
+ { id: 'act-008', entity_type: 'invoice', entity_id: 'INV-2026-002', user_id: 'admin', action: 'created', description: 'Invoice INV-2026-002 created for $275.00', timestamp: '2026-01-25T10:00:00Z' },
+ { id: 'act-009', entity_type: 'invoice', entity_id: 'INV-2026-002', user_id: 'admin', action: 'paid', description: 'Invoice INV-2026-002 paid in full', timestamp: '2026-01-28T11:00:00Z' },
+ { id: 'act-010', entity_type: 'customer', entity_id: 'CUST-008', user_id: 'admin', action: 'created', description: 'New customer added: Evergreen Properties', timestamp: '2026-02-15T16:00:00Z' },
+];
+
+// ============== PROJECTS DATA (2026) ==============
+const projects = [
+ {
+   id: 'proj-1',
+   title: 'Office Building Renovation',
+   description: 'Complete renovation of the main office building including HVAC, electrical, and plumbing',
+   start_date: '2026-01-15',
+   end_date: '2026-06-30',
+   status: 'in_progress',
+   overall_progress: 35,
+   created_by: 'admin',
+   created_at: '2026-01-10T08:00:00Z',
+   updated_at: '2026-02-15T10:30:00Z'
+ },
+ {
+   id: 'proj-2',
+   title: 'Warehouse Expansion',
+   description: 'Expand warehouse capacity by 5000 sq ft',
+   start_date: '2026-03-01',
+   end_date: '2026-08-31',
+   status: 'planning',
+   overall_progress: 0,
+   created_by: 'admin',
+   created_at: '2026-02-01T09:00:00Z',
+   updated_at: '2026-02-01T09:00:00Z'
+ },
+ {
+   id: 'proj-3',
+   title: 'Hospital Wing Construction',
+   description: 'New 3-story medical wing with specialized HVAC and emergency power systems',
+   start_date: '2026-02-01',
+   end_date: '2026-12-15',
+   status: 'active',
+   overall_progress: 25,
+   created_by: 'admin',
+   created_at: '2026-01-20T10:00:00Z',
+   updated_at: '2026-03-01T14:00:00Z'
+ },
+ {
+   id: 'proj-4',
+   title: 'School District HVAC Upgrade',
+   description: 'Replace aging HVAC systems across 5 school buildings',
+   start_date: '2026-01-05',
+   end_date: '2026-04-30',
+   status: 'delayed',
+   overall_progress: 60,
+   created_by: 'admin',
+   created_at: '2026-01-02T09:00:00Z',
+   updated_at: '2026-03-15T11:00:00Z'
+ },
+ {
+   id: 'proj-5',
+   title: 'Shopping Mall Renovation',
+   description: 'Complete interior renovation of 200,000 sq ft shopping center',
+   start_date: '2026-04-01',
+   end_date: '2026-09-30',
+   status: 'not_started',
+   overall_progress: 0,
+   created_by: 'admin',
+   created_at: '2026-02-20T08:00:00Z',
+   updated_at: '2026-02-20T08:00:00Z'
+ }
+];
+
+// ============== TASKS DATA (2026) ==============
+const tasks = [
+ {
+   id: 'task-1-1',
+   project_id: 'proj-1',
+   parent_task_id: null,
+   name: 'Phase 1: Planning & Design',
+   start_date: '2026-01-15',
+   end_date: '2026-02-15',
+   duration_days: 32,
+   progress_percent: 100,
+   weight: 10,
+   status: 'completed',
+   sort_order: 1,
+   notes: 'Completed architectural drawings',
+   assignee: 'admin',
+   estimated_cost: 5000,
+   actual_cost: 4500,
+   dependency_ids: [],
+   is_milestone: false,
+   updated_by: 'admin',
+   updated_at: '2026-02-15T16:00:00Z'
+ },
+ {
+   id: 'task-1-2',
+   project_id: 'proj-1',
+   parent_task_id: null,
+   name: 'Phase 2: HVAC Installation',
+   start_date: '2026-02-16',
+   end_date: '2026-04-30',
+   duration_days: 74,
+   progress_percent: 45,
+   weight: 10,
+   status: 'in_progress',
+   sort_order: 2,
+   notes: 'In progress - 60% of units installed',
+   updated_by: 'admin',
+   updated_at: '2026-03-15T11:00:00Z'
+ },
+ {
+   id: 'task-1-2-1',
+   project_id: 'proj-1',
+   parent_task_id: 'task-1-2',
+   name: 'HVAC Unit 1 - Floor 1',
+   start_date: '2026-02-16',
+   end_date: '2026-03-15',
+   duration_days: 28,
+   progress_percent: 100,
+   weight: 10,
+   status: 'completed',
+   sort_order: 1,
+   notes: '',
+   updated_by: 'admin',
+   updated_at: '2026-03-15T10:00:00Z'
+ },
+ {
+   id: 'task-1-2-2',
+   project_id: 'proj-1',
+   parent_task_id: 'task-1-2',
+   name: 'HVAC Unit 2 - Floor 2',
+   start_date: '2026-03-01',
+   end_date: '2026-04-15',
+   duration_days: 46,
+   progress_percent: 30,
+   weight: 10,
+   status: 'in_progress',
+   sort_order: 2,
+   notes: 'In progress',
+   updated_by: 'admin',
+   updated_at: '2026-03-15T11:00:00Z'
+ },
+ {
+   id: 'task-1-2-3',
+   project_id: 'proj-1',
+   parent_task_id: 'task-1-2',
+   name: 'HVAC Unit 3 - Floor 3',
+   start_date: '2026-04-01',
+   end_date: '2026-04-30',
+   duration_days: 30,
+   progress_percent: 0,
+   weight: 10,
+   status: 'not_started',
+   sort_order: 3,
+   notes: 'Scheduled to start',
+   updated_by: 'admin',
+   updated_at: '2026-02-15T10:00:00Z'
+ },
+ {
+   id: 'task-1-3',
+   project_id: 'proj-1',
+   parent_task_id: null,
+   name: 'Phase 3: Electrical Work',
+   start_date: '2026-03-01',
+   end_date: '2026-05-31',
+   duration_days: 92,
+   progress_percent: 20,
+   weight: 20,
+   status: 'in_progress',
+   sort_order: 3,
+   notes: 'Started wiring',
+   updated_by: 'admin',
+   updated_at: '2026-03-15T09:00:00Z'
+ },
+ {
+   id: 'task-1-4',
+   project_id: 'proj-1',
+   parent_task_id: null,
+   name: 'Phase 4: Plumbing',
+   start_date: '2026-04-01',
+   end_date: '2026-06-15',
+   duration_days: 76,
+   progress_percent: 0,
+   weight: 20,
+   status: 'not_started',
+   sort_order: 4,
+   notes: 'Pending',
+   updated_by: 'admin',
+   updated_at: '2026-02-15T10:00:00Z'
+ },
+ {
+   id: 'task-1-5',
+   project_id: 'proj-1',
+   parent_task_id: null,
+   name: 'Phase 5: Final Inspections',
+   start_date: '2026-06-01',
+   end_date: '2026-06-30',
+   duration_days: 30,
+   progress_percent: 0,
+   weight: 10,
+   status: 'not_started',
+   sort_order: 5,
+   notes: '',
+   updated_by: 'admin',
+   updated_at: '2026-02-15T10:00:00Z'
+ },
+ // Project 3: Hospital Wing Construction
+ {
+   id: 'task-3-1',
+   project_id: 'proj-3',
+   parent_task_id: null,
+   name: 'Foundation & Structural',
+   start_date: '2026-02-01',
+   end_date: '2026-04-30',
+   duration_days: 89,
+   progress_percent: 80,
+   weight: 25,
+   status: 'in_progress',
+   sort_order: 1,
+   notes: 'Foundation complete, steel framing 60% done',
+   updated_by: 'admin',
+   updated_at: '2026-03-15T10:00:00Z'
+ },
+ {
+   id: 'task-3-2',
+   project_id: 'proj-3',
+   parent_task_id: null,
+   name: 'Medical Gas Systems',
+   start_date: '2026-05-01',
+   end_date: '2026-07-31',
+   duration_days: 92,
+   progress_percent: 10,
+   weight: 20,
+   status: 'in_progress',
+   sort_order: 2,
+   notes: 'Design phase complete, procurement started',
+   updated_by: 'admin',
+   updated_at: '2026-03-10T14:00:00Z'
+ },
+ {
+   id: 'task-3-3',
+   project_id: 'proj-3',
+   parent_task_id: null,
+   name: 'Emergency Power Installation',
+   start_date: '2026-06-01',
+   end_date: '2026-08-31',
+   duration_days: 92,
+   progress_percent: 0,
+   weight: 20,
+   status: 'not_started',
+   sort_order: 3,
+   notes: 'Generators on order',
+   updated_by: 'admin',
+   updated_at: '2026-02-25T09:00:00Z'
+ },
+ {
+   id: 'task-3-4',
+   project_id: 'proj-3',
+   parent_task_id: null,
+   name: 'Specialized HVAC',
+   start_date: '2026-08-01',
+   end_date: '2026-10-31',
+   duration_days: 92,
+   progress_percent: 0,
+   weight: 20,
+   status: 'not_started',
+   sort_order: 4,
+   notes: 'Clean room systems pending',
+   updated_by: 'admin',
+   updated_at: '2026-02-20T11:00:00Z'
+ },
+ {
+   id: 'task-3-5',
+   project_id: 'proj-3',
+   parent_task_id: null,
+   name: 'Final Certification',
+   start_date: '2026-11-01',
+   end_date: '2026-12-15',
+   duration_days: 45,
+   progress_percent: 0,
+   weight: 15,
+   status: 'not_started',
+   sort_order: 5,
+   notes: 'Medical certification required',
+   updated_by: 'admin',
+   updated_at: '2026-02-20T11:00:00Z'
+ },
+ // Project 4: School District HVAC Upgrade (DELAYED)
+ {
+   id: 'task-4-1',
+   project_id: 'proj-4',
+   parent_task_id: null,
+   name: 'Site 1: Riverside Elementary',
+   start_date: '2026-01-05',
+   end_date: '2026-02-15',
+   duration_days: 42,
+   progress_percent: 100,
+   weight: 20,
+   status: 'completed',
+   sort_order: 1,
+   notes: 'Completed on schedule',
+   updated_by: 'admin',
+   updated_at: '2026-02-15T16:00:00Z'
+ },
+ {
+   id: 'task-4-2',
+   project_id: 'proj-4',
+   parent_task_id: null,
+   name: 'Site 2: Central Middle School',
+   start_date: '2026-02-01',
+   end_date: '2026-03-15',
+   duration_days: 43,
+   progress_percent: 70,
+   weight: 20,
+   status: 'delayed',
+   sort_order: 2,
+   notes: 'Equipment delivery delayed 2 weeks',
+   updated_by: 'admin',
+   updated_at: '2026-03-20T10:00:00Z'
+ },
+ {
+   id: 'task-4-3',
+   project_id: 'proj-4',
+   parent_task_id: null,
+   name: 'Site 3: Westside High',
+   start_date: '2026-02-15',
+   end_date: '2026-03-30',
+   duration_days: 44,
+   progress_percent: 40,
+   weight: 20,
+   status: 'delayed',
+   sort_order: 3,
+   notes: 'Waiting for permits',
+   updated_by: 'admin',
+   updated_at: '2026-03-18T14:00:00Z'
+ },
+ {
+   id: 'task-4-4',
+   project_id: 'proj-4',
+   parent_task_id: null,
+   name: 'Site 4: North Academy',
+   start_date: '2026-03-01',
+   end_date: '2026-04-15',
+   duration_days: 46,
+   progress_percent: 20,
+   weight: 20,
+   status: 'in_progress',
+   sort_order: 4,
+   notes: 'Started late due to weather',
+   updated_by: 'admin',
+   updated_at: '2026-03-15T09:00:00Z'
+ },
+ {
+   id: 'task-4-5',
+   project_id: 'proj-4',
+   parent_task_id: null,
+   name: 'Site 5: South Elementary',
+   start_date: '2026-03-15',
+   end_date: '2026-04-30',
+   duration_days: 47,
+   progress_percent: 0,
+   weight: 20,
+   status: 'not_started',
+   sort_order: 5,
+   notes: 'Pending completion of Site 4',
+   updated_by: 'admin',
+   updated_at: '2026-03-01T10:00:00Z'
+ },
+ // Project 5: Shopping Mall Renovation (NOT STARTED)
+ {
+   id: 'task-5-1',
+   project_id: 'proj-5',
+   parent_task_id: null,
+   name: 'Demolition & Site Prep',
+   start_date: '2026-04-01',
+   end_date: '2026-05-15',
+   duration_days: 45,
+   progress_percent: 0,
+   weight: 15,
+   status: 'not_started',
+   sort_order: 1,
+   notes: 'Permits pending approval',
+   updated_by: 'admin',
+   updated_at: '2026-02-20T08:00:00Z'
+ },
+ {
+   id: 'task-5-2',
+   project_id: 'proj-5',
+   parent_task_id: null,
+   name: 'Electrical Infrastructure',
+   start_date: '2026-05-01',
+   end_date: '2026-06-30',
+   duration_days: 61,
+   progress_percent: 0,
+   weight: 20,
+   status: 'not_started',
+   sort_order: 2,
+   notes: 'Design review scheduled',
+   updated_by: 'admin',
+   updated_at: '2026-02-20T08:00:00Z'
+ },
+ {
+   id: 'task-5-3',
+   project_id: 'proj-5',
+   parent_task_id: null,
+   name: 'HVAC Modernization',
+   start_date: '2026-06-15',
+   end_date: '2026-08-15',
+   duration_days: 62,
+   progress_percent: 0,
+   weight: 20,
+   status: 'not_started',
+   sort_order: 3,
+   notes: 'Energy efficient systems selected',
+   updated_by: 'admin',
+   updated_at: '2026-02-20T08:00:00Z'
+ },
+ {
+   id: 'task-5-4',
+   project_id: 'proj-5',
+   parent_task_id: null,
+   name: 'Interior Build-out',
+   start_date: '2026-07-01',
+   end_date: '2026-09-15',
+   duration_days: 77,
+   progress_percent: 0,
+   weight: 25,
+   status: 'not_started',
+   sort_order: 4,
+   notes: 'Tenant coordination required',
+   updated_by: 'admin',
+   updated_at: '2026-02-20T08:00:00Z'
+ },
+ {
+   id: 'task-5-5',
+   project_id: 'proj-5',
+   parent_task_id: null,
+   name: 'Final Inspections & Opening',
+   start_date: '2026-09-01',
+   end_date: '2026-09-30',
+   duration_days: 30,
+   progress_percent: 0,
+   weight: 20,
+   status: 'not_started',
+   sort_order: 5,
+   notes: 'Grand opening scheduled Oct 1',
+   updated_by: 'admin',
+   updated_at: '2026-02-20T08:00:00Z'
+ }
+];
+
+// ============== NOTIFICATIONS DATA (2026) ==============
+const notifications = [
+ { id: 'notif-001', user_id: 'admin', title: 'Job Completed', message: 'HVAC preventive maintenance completed successfully', read: false, timestamp: '2026-01-20T10:30:00Z' },
+ { id: 'notif-002', user_id: 'admin', title: 'Payment Received', message: 'Invoice INV-2026-001 has been paid', read: true, timestamp: '2026-01-25T14:00:00Z' },
+ { id: 'notif-003', user_id: 'admin', title: 'New Job Assigned', message: 'New job: Electrical panel audit assigned to technician', read: false, timestamp: '2026-02-10T10:00:00Z' },
+];
+
+// ============== CALCULATION ENGINE ==============
+const calculateDuration = (startDate, endDate) => {
+ if (!startDate || !endDate) return 0;
+ const start = new Date(startDate);
+ const end = new Date(endDate);
+ const diffTime = end - start;
+ const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+ return diffDays >= 0 ? diffDays + 1 : 0;
 };
 
-const calculateProjectProgress = (projectId) => {
-  const projectTasks = fallbackTasks.filter(t => t.projectId === projectId);
-  if (projectTasks.length === 0) return 0;
-  const totalProgress = projectTasks.reduce((sum, task) => sum + task.progress, 0);
-  return Math.round(totalProgress / projectTasks.length);
+const calculateTaskStatus = (progress, endDate) => {
+ if (progress === 0) return 'not_started';
+ if (progress === 100) return 'completed';
+ 
+ if (endDate) {
+   const today = new Date();
+   const end = new Date(endDate);
+   if (end < today && progress < 100) {
+     return 'delayed';
+   }
+ }
+ return 'in_progress';
 };
 
-const autoUpdateProjectStatus = (projectId) => {
-  const project = fallbackProjects.find(p => p.id === projectId);
-  if (!project) return;
-  
-  const progress = calculateProjectProgress(projectId);
-  project.progress = progress;
-  
-  if (progress === 100 && project.status !== 'completed') {
-    project.status = 'completed';
-  } else if (progress > 0 && project.status === 'not_started') {
-    project.status = 'active';
-  }
-  
-  // Check for overdue
-  const today = new Date().toISOString().split('T')[0];
-  if (project.targetDeadline < today && project.status !== 'completed') {
-    project.status = 'overdue';
-  }
+const calculateProjectProgress = (projectTasks) => {
+ if (!projectTasks || projectTasks.length === 0) return 0;
+ 
+ let totalWeightedProgress = 0;
+ let totalWeight = 0;
+ 
+ const rootTasks = projectTasks.filter(t => !t.parent_task_id);
+ 
+ rootTasks.forEach(task => {
+   const weight = task.weight || 1;
+   totalWeightedProgress += (task.progress_percent || 0) * weight;
+   totalWeight += weight;
+ });
+ 
+ if (totalWeight === 0) return 0;
+ return Math.round(totalWeightedProgress / totalWeight);
 };
 
-const emailQueue = [];
-
-const sendEmail = async (to, subject, body) => {
-  const email = {
-    id: `EMAIL-${Date.now()}`,
-    to,
-    subject,
-    body,
-    sentAt: new Date().toISOString(),
-    status: 'sent'
-  };
-  emailQueue.push(email);
-  console.log(`📧 Email sent to ${to}: ${subject}`);
-  return email;
+const calculateTaskContribution = (task) => {
+ if (!task || !task.weight) return 0;
+ return ((task.progress_percent || 0) * (task.weight || 1)) / 100;
 };
 
-let UserModel = null;
-let JobModel = null;
-let CustomerModel = null;
-let InvoiceModel = null;
-let ActivityLogModel = null;
+const calculateProjectStatus = (projectTasks) => {
+ if (!projectTasks || projectTasks.length === 0) return 'planning';
+ 
+ const completed = projectTasks.every(t => t.progress_percent === 100);
+ if (completed) return 'completed';
+ 
+ const anyInProgress = projectTasks.some(t => t.progress_percent > 0 && t.progress_percent < 100);
+ if (anyInProgress) return 'in_progress';
+ 
+ const anyDelayed = projectTasks.some(t => calculateTaskStatus(t.progress_percent, t.end_date) === 'delayed');
+ if (anyDelayed) return 'delayed';
+ 
+ return 'planning';
+};
 
-const dbState = {
-  configured: Boolean(process.env.MONGO_URI || process.env.MONGODB_URI),
-  enabled: Boolean(mongoose),
-  connected: false,
-  error: '',
+const getProjectDateRange = (projectTasks) => {
+ if (!projectTasks || projectTasks.length === 0) return { start_date: null, end_date: null };
+ 
+ const startDates = projectTasks.map(t => t.start_date).filter(d => d);
+ const endDates = projectTasks.map(t => t.end_date).filter(d => d);
+ 
+ return {
+   start_date: startDates.length ? startDates.sort()[0] : null,
+   end_date: endDates.length ? endDates.sort().reverse()[0] : null
+ };
+};
+
+const recalculateProject = (projectId) => {
+ const projectTasks = tasks.filter(t => t.project_id === projectId);
+ const project = projects.find(p => p.id === projectId);
+ 
+ if (project) {
+   project.overall_progress = calculateProjectProgress(projectTasks);
+   project.status = calculateProjectStatus(projectTasks);
+   const dateRange = getProjectDateRange(projectTasks);
+   if (dateRange.start_date) project.start_date = dateRange.start_date;
+   if (dateRange.end_date) project.end_date = dateRange.end_date;
+   project.updated_at = new Date().toISOString();
+ }
+};
+
+const logActivity = (entityType, entityId, userId, action, description) => {
+ activityLogs.unshift({
+   id: `act-${Date.now()}`,
+   entity_type: entityType,
+   entity_id: entityId,
+   user_id: userId,
+   action,
+   description,
+   timestamp: new Date().toISOString()
+ });
 };
 
 const sessions = new Map();
-const notifications = [];
 
 const toSafeUser = (user) => ({
-  id: user.id,
-  username: user.username,
-  role: user.role,
+ id: user.id,
+ username: user.username,
+ role: user.role,
 });
 
 const getBearerToken = (req) => {
-  const raw = String(req.headers.authorization || '');
-  if (!raw.toLowerCase().startsWith('bearer ')) return '';
-  return raw.slice(7).trim();
+ const raw = String(req.headers.authorization || '');
+ if (!raw.toLowerCase().startsWith('bearer ')) return '';
+ return raw.slice(7).trim();
 };
 
 const requireAuth = (req, res, next) => {
-  const token = getBearerToken(req);
-  const session = sessions.get(token);
-  if (!token || !session) return res.status(401).json({ error: 'Unauthorized' });
-  req.authUser = session.user;
-  req.authToken = token;
-  return next();
+ const token = getBearerToken(req);
+ const session = sessions.get(token);
+ if (!token || !session) return res.status(401).json({ error: 'Unauthorized' });
+ req.authUser = session.user;
+ req.authToken = token;
+ return next();
 };
 
 const requireRoles = (allowedRoles) => (req, res, next) => {
-  if (!req.authUser || !allowedRoles.includes(req.authUser.role)) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-  return next();
+ if (!req.authUser || !allowedRoles.includes(req.authUser.role)) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+ return next();
 };
 
-const normalizePriority = (value, fallback = 'medium') => {
-  const next = String(value || fallback).trim().toLowerCase();
-  return ['low', 'medium', 'high'].includes(next) ? next : null;
+const nextJobId = () => {
+ const max = jobs.reduce((acc, item) => {
+   const n = Number(String(item.id || '').replace('JOB-', '')) || 0;
+   return n > acc ? n : acc;
+ }, 1000);
+ return `JOB-${String(max + 1).padStart(4, '0')}`;
 };
 
-const normalizeStatus = (value, fallback = 'new') => {
-  const next = String(value || fallback).trim().toLowerCase();
-  return ['new', 'assigned', 'in-progress', 'completed'].includes(next) ? next : null;
+const nextInvoiceId = () => {
+ const year = new Date().getFullYear();
+ const max = invoices.reduce((acc, item) => {
+   const n = Number(String(item.id || '').replace(`INV-${year}-`, '')) || 0;
+   return n > acc ? n : acc;
+ }, 0);
+ return `INV-${year}-${String(max + 1).padStart(3, '0')}`;
 };
 
-const normalizeCategory = (value, fallback = 'general') => {
-  const next = String(value || fallback).trim().toLowerCase();
-  return ['general', 'hvac', 'electrical', 'plumbing', 'repair', 'installation', 'inspection'].includes(next) ? next : 'general';
-};
+const findJobById = (id) => normalizeJob(jobs.find((item) => String(item.id) === String(id)));
+const technicianUsernames = users.filter((u) => u.role === 'technician').map((u) => u.username);
 
-const nextJobIdFromList = (list = []) => {
-  const max = list.reduce((acc, item) => {
-    const n = Number(String(item.id || '').replace('JOB-', '')) || 0;
-    return n > acc ? n : acc;
-  }, 1000);
-  return `JOB-${String(max + 1).padStart(4, '0')}`;
-};
-
-const nextCustomerIdFromList = (list = []) => {
-  const max = list.reduce((acc, item) => {
-    const n = Number(String(item.id || '').replace('CUST-', '')) || 0;
-    return n > acc ? n : acc;
-  }, 0);
-  return `CUST-${String(max + 1).padStart(3, '0')}`;
-};
-
-const nextInvoiceIdFromList = (list = []) => {
-  const max = list.reduce((acc, item) => {
-    const n = Number(String(item.id || '').replace('INV-', '')) || 0;
-    return n > acc ? n : acc;
-  }, 0);
-  return `INV-${String(max + 1).padStart(3, '0')}`;
-};
-
-const nextActivityLogId = (list = []) => {
-  const max = list.reduce((acc, item) => {
-    const n = Number(String(item.id || '').replace('LOG-', '')) || 0;
-    return n > acc ? n : acc;
-  }, 0);
-  return `LOG-${String(max + 1).padStart(3, '0')}`;
-};
-
-const useDb = () => Boolean(dbState.connected && JobModel && UserModel);
-
-const logActivity = (action, description, userId) => {
-  const log = {
-    id: nextActivityLogId(fallbackActivityLogs),
-    action,
-    description,
-    userId,
-    timestamp: new Date().toISOString(),
-  };
-  fallbackActivityLogs.unshift(log);
-  if (fallbackActivityLogs.length > 100) fallbackActivityLogs.pop();
-  emitEvent('activity:new', log);
-  return log;
-};
-
-const addNotification = (type, title, message, userId = null) => {
-  const notification = {
-    id: `NOTIF-${Date.now()}`,
-    type,
-    title,
-    message,
-    userId,
-    read: false,
-    createdAt: new Date().toISOString(),
-  };
-  notifications.unshift(notification);
-  emitEvent('notification:new', notification);
-  return notification;
-};
-
-const listUsers = async () => {
-  if (useDb()) {
-    const docs = await UserModel.find().lean();
-    return docs.map((u) => ({
-      id: u.id,
-      username: u.username,
-      password: u.password,
-      role: u.role,
-    }));
-  }
-  return [...fallbackUsers];
-};
-
-const listCustomers = async () => {
-  if (useDb() && CustomerModel) {
-    const docs = await CustomerModel.find().sort({ createdAt: -1 }).lean();
-    return docs.map((c) => ({
-      id: c.id,
-      name: c.name,
-      email: c.email,
-      phone: c.phone,
-      address: c.address,
-      notes: c.notes,
-    }));
-  }
-  return [...fallbackCustomers];
-};
-
-const findCustomerById = async (id) => {
-  if (useDb() && CustomerModel) {
-    const doc = await CustomerModel.findOne({ id: String(id) }).lean();
-    if (!doc) return null;
-    return {
-      id: doc.id,
-      name: doc.name,
-      email: doc.email,
-      phone: doc.phone,
-      address: doc.address,
-      notes: doc.notes,
-    };
-  }
-  return fallbackCustomers.find((item) => String(item.id) === String(id)) || null;
-};
-
-const listJobs = async () => {
-  if (useDb()) {
-    const docs = await JobModel.find().sort({ createdAt: -1 }).lean();
-    return docs.map((j) => ({
-      id: j.id,
-      title: j.title,
-      status: j.status,
-      priority: j.priority,
-      assignedTo: j.assignedTo || '',
-      location: j.location || 'Unspecified',
-      customerId: j.customerId || '',
-      scheduledDate: j.scheduledDate || '',
-      notes: j.notes || '',
-      checkinTime: j.checkinTime || null,
-      checkoutTime: j.checkoutTime || null,
-      category: j.category || 'general',
-      photos: j.photos || [],
-      invoiceId: j.invoiceId || null,
-    }));
-  }
-  return [...fallbackJobs];
-};
-
-const findJobById = async (id) => {
-  if (useDb()) {
-    const doc = await JobModel.findOne({ id: String(id) }).lean();
-    if (!doc) return null;
-    return {
-      id: doc.id,
-      title: doc.title,
-      status: doc.status,
-      priority: doc.priority,
-      assignedTo: doc.assignedTo || '',
-      location: doc.location || 'Unspecified',
-      customerId: doc.customerId || '',
-      scheduledDate: doc.scheduledDate || '',
-      notes: doc.notes || '',
-      checkinTime: doc.checkinTime || null,
-      checkoutTime: doc.checkoutTime || null,
-      category: doc.category || 'general',
-      photos: doc.photos || [],
-      invoiceId: doc.invoiceId || null,
-    };
-  }
-  return fallbackJobs.find((item) => String(item.id) === String(id)) || null;
-};
-
-const getTechnicianUsernames = async () => {
-  const users = await listUsers();
-  return users.filter((u) => u.role === 'technician').map((u) => u.username);
-};
-
-const createJob = async (payload) => {
-  const jobs = await listJobs();
-  const created = {
-    id: nextJobIdFromList(jobs),
-    title: payload.title,
-    status: payload.assignedTo ? 'assigned' : 'new',
-    priority: payload.priority,
-    assignedTo: payload.assignedTo || '',
-    location: payload.location || 'Unspecified',
-    customerId: payload.customerId || '',
-    scheduledDate: payload.scheduledDate || '',
-    notes: payload.notes || '',
-    checkinTime: null,
-    checkoutTime: null,
-    category: payload.category || 'general',
-    photos: [],
-    invoiceId: null,
-  };
-
-  if (useDb()) {
-    await JobModel.create(created);
-  } else {
-    fallbackJobs.unshift(created);
-  }
-  
-  logActivity('job_created', `Job ${created.id} created: ${created.title}`, payload.createdBy || 'system');
-  addNotification('job', 'New Job Created', `${created.id}: ${created.title}`, null);
-  emitEvent('job:created', created);
-  
-  return created;
-};
-
-const updateJob = async (id, updates) => {
-  if (useDb()) {
-    const updated = await JobModel.findOneAndUpdate({ id: String(id) }, { $set: updates }, { new: true }).lean();
-    if (!updated) return null;
-    return {
-      id: updated.id,
-      title: updated.title,
-      status: updated.status,
-      priority: updated.priority,
-      assignedTo: updated.assignedTo || '',
-      location: updated.location || 'Unspecified',
-      customerId: updated.customerId || '',
-      scheduledDate: updated.scheduledDate || '',
-      notes: updated.notes || '',
-      checkinTime: updated.checkinTime || null,
-      checkoutTime: updated.checkoutTime || null,
-      category: updated.category || 'general',
-      photos: updated.photos || [],
-      invoiceId: updated.invoiceId || null,
-    };
-  }
-
-  const idx = fallbackJobs.findIndex((item) => String(item.id) === String(id));
-  if (idx === -1) return null;
-  fallbackJobs[idx] = { ...fallbackJobs[idx], ...updates };
-  emitEvent('job:updated', fallbackJobs[idx]);
-  return fallbackJobs[idx];
-};
-
-const createCustomer = async (payload) => {
-  const customers = await listCustomers();
-  const created = {
-    id: nextCustomerIdFromList(customers),
-    name: payload.name,
-    email: payload.email || '',
-    phone: payload.phone || '',
-    address: payload.address || '',
-    notes: payload.notes || '',
-  };
-
-  if (useDb() && CustomerModel) {
-    await CustomerModel.create(created);
-  } else {
-    fallbackCustomers.unshift(created);
-  }
-  
-  logActivity('customer_created', `Customer ${created.id} created: ${created.name}`, payload.createdBy || 'system');
-  emitEvent('customer:created', created);
-  
-  return created;
-};
-
-const updateCustomer = async (id, updates) => {
-  if (useDb() && CustomerModel) {
-    const updated = await CustomerModel.findOneAndUpdate({ id: String(id) }, { $set: updates }, { new: true }).lean();
-    if (!updated) return null;
-    return {
-      id: updated.id,
-      name: updated.name,
-      email: updated.email,
-      phone: updated.phone,
-      address: updated.address,
-      notes: updated.notes,
-    };
-  }
-
-  const idx = fallbackCustomers.findIndex((item) => String(item.id) === String(id));
-  if (idx === -1) return null;
-  fallbackCustomers[idx] = { ...fallbackCustomers[idx], ...updates };
-  return fallbackCustomers[idx];
-};
-
-const deleteCustomer = async (id) => {
-  if (useDb() && CustomerModel) {
-    const result = await CustomerModel.findOneAndDelete({ id: String(id) });
-    return result !== null;
-  }
-
-  const idx = fallbackCustomers.findIndex((item) => String(item.id) === String(id));
-  if (idx === -1) return false;
-  fallbackCustomers.splice(idx, 1);
-  return true;
-};
-
-const createInvoice = async (payload) => {
-  const invoices = [...fallbackInvoices];
-  const created = {
-    id: nextInvoiceIdFromList(invoices),
-    jobId: payload.jobId,
-    customerId: payload.customerId,
-    amount: payload.amount || 0,
-    status: 'pending',
-    items: payload.items || [],
-    createdAt: new Date().toISOString(),
-    paidAt: null,
-  };
-
-  fallbackInvoices.unshift(created);
-  await updateJob(payload.jobId, { invoiceId: created.id });
-  
-  logActivity('invoice_created', `Invoice ${created.id} created for job ${payload.jobId}`, payload.createdBy || 'system');
-  addNotification('invoice', 'Invoice Created', `Invoice ${created.id} for $${created.amount.toFixed(2)}`, null);
-  
-  const customer = await findCustomerById(payload.customerId);
-  if (customer && customer.email) {
-    await sendEmail(
-      customer.email,
-      `Invoice ${created.id} Created`,
-      `Dear ${customer.name},\n\nYour invoice for job ${payload.jobId} has been created.\n\nAmount: $${created.amount.toFixed(2)}\n\nPlease review and make payment.\n\nBest regards,\nField Service Suite`
-    );
-  }
-  
-  emitEvent('invoice:created', created);
-  return created;
-};
-
-const updateInvoice = async (id, updates) => {
-  const idx = fallbackInvoices.findIndex((item) => String(item.id) === String(id));
-  if (idx === -1) return null;
-  
-  fallbackInvoices[idx] = { ...fallbackInvoices[idx], ...updates };
-  
-  if (updates.status === 'paid') {
-    fallbackInvoices[idx].paidAt = new Date().toISOString();
-    logActivity('invoice_paid', `Invoice ${id} marked as paid`, updates.paidBy || 'system');
-    addNotification('invoice', 'Invoice Paid', `Invoice ${id} has been paid`, null);
-    
-    const invoice = fallbackInvoices[idx];
-    const customer = await findCustomerById(invoice.customerId);
-    if (customer && customer.email) {
-      await sendEmail(
-        customer.email,
-        `Payment Received - Invoice ${id}`,
-        `Dear ${customer.name},\n\nThank you! We have received your payment of $${invoice.amount.toFixed(2)} for invoice ${id}.\n\nYour payment has been processed successfully.\n\nBest regards,\nField Service Suite`
-      );
-    }
-  }
-  
-  emitEvent('invoice:updated', fallbackInvoices[idx]);
-  return fallbackInvoices[idx];
-};
-
-const generatePDFInvoice = (invoice, job, customer) => {
-  const pdfContent = `
-===========================================
-         FIELD SERVICE SUITE - INVOICE
-===========================================
-
-Invoice Number: ${invoice.id}
-Date: ${new Date(invoice.createdAt).toLocaleDateString()}
-
--------------------------------------------
-BILL TO:
--------------------------------------------
-${customer.name}
-${customer.address}
-${customer.email}
-${customer.phone}
-
--------------------------------------------
-JOB DETAILS:
--------------------------------------------
-Job ID: ${job.id}
-Job Title: ${job.title}
-Category: ${job.category}
-
--------------------------------------------
-ITEMS:
--------------------------------------------
-${invoice.items.map(item => `${item.description} x${item.quantity} = $${(item.rate * item.quantity).toFixed(2)}`).join('\n')}
-
--------------------------------------------
-SUBTOTAL:   $${invoice.amount.toFixed(2)}
-TAX (0%):   $0.00
--------------------------------------------
-TOTAL:      $${invoice.amount.toFixed(2)}
-===========================================
-
-Payment Status: ${invoice.status.toUpperCase()}
-${invoice.paidAt ? `Paid On: ${new Date(invoice.paidAt).toLocaleDateString()}` : ''}
-
-Thank you for your business!
-
-===========================================
-  Generated by Field Service Suite
-===========================================
-  `;
-  
-  return pdfContent;
-};
-
-const initDb = async () => {
-  let mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || '';
-  console.log('🔍 Checking MongoDB connection...');
-  console.log('   MONGO_URI defined:', Boolean(mongoUri));
-  
-  if (!mongoUri || !mongoose) {
-    dbState.connected = false;
-    dbState.error = mongoUri ? 'mongoose package not installed' : 'MONGO_URI is not configured';
-    console.log('❌ MongoDB not configured:', dbState.error);
-    return;
-  }
-
-  // Use SRV format directly - mongoose handles it automatically
-  if (mongoUri.includes('mongodb+srv://')) {
-    console.log('   Using SRV connection format (mongoose will handle it)');
-  }
-
-  try {
-    console.log('   Attempting to connect to MongoDB...');
-    await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 15000,
-      connectTimeoutMS: 15000,
-    });
-    console.log('✅ MongoDB connected successfully!');
-
-    const userSchema = new mongoose.Schema({
-      id: { type: String, required: true, unique: true, index: true },
-      username: { type: String, required: true, unique: true, index: true },
-      password: { type: String, required: true },
-      role: { type: String, required: true, enum: ['admin', 'dispatcher', 'technician', 'client'] },
-    }, { timestamps: true });
-
-    const jobSchema = new mongoose.Schema({
-      id: { type: String, required: true, unique: true, index: true },
-      title: { type: String, required: true },
-      status: { type: String, required: true, enum: ['new', 'assigned', 'in-progress', 'completed'] },
-      priority: { type: String, required: true, enum: ['low', 'medium', 'high'] },
-      assignedTo: { type: String, default: '' },
-      location: { type: String, default: 'Unspecified' },
-      customerId: { type: String, default: '' },
-      scheduledDate: { type: String, default: '' },
-      notes: { type: String, default: '' },
-      checkinTime: { type: String, default: null },
-      checkoutTime: { type: String, default: null },
-      category: { type: String, default: 'general' },
-      photos: { type: [String], default: [] },
-      invoiceId: { type: String, default: null },
-    }, { timestamps: true });
-
-    const customerSchema = new mongoose.Schema({
-      id: { type: String, required: true, unique: true, index: true },
-      name: { type: String, required: true },
-      email: { type: String, default: '' },
-      phone: { type: String, default: '' },
-      address: { type: String, default: '' },
-      notes: { type: String, default: '' },
-    }, { timestamps: true });
-
-    UserModel = mongoose.models.App2User || mongoose.model('App2User', userSchema);
-    JobModel = mongoose.models.App2Job || mongoose.model('App2Job', jobSchema);
-    CustomerModel = mongoose.models.App2Customer || mongoose.model('App2Customer', customerSchema);
-
-    const userCount = await UserModel.countDocuments();
-    if (userCount === 0) await UserModel.insertMany(defaultUsers);
-
-    const jobCount = await JobModel.countDocuments();
-    if (jobCount === 0) await JobModel.insertMany(fallbackJobs);
-
-    const customerCount = await CustomerModel.countDocuments();
-    if (customerCount === 0) await CustomerModel.insertMany(fallbackCustomers);
-
-    dbState.connected = true;
-    dbState.error = '';
-  } catch (error) {
-    dbState.connected = false;
-    dbState.error = error?.message || 'MongoDB connection failed';
-    console.log('❌ MongoDB connection failed!');
-    console.log('   Error:', error?.message || 'Unknown error');
-  }
-};
-
+// ============== STATUS ENDPOINT ==============
 app.get('/api/status', (_req, res) => {
-  res.json({
-    ok: true,
-    service: 'app2-field-service-suite-backend',
-    timestamp: new Date().toISOString(),
-    usingFallback: !useDb(),
-    dbConfigured: dbState.configured,
-    dbConnected: dbState.connected,
-    dbError: dbState.connected ? '' : dbState.error,
-  });
+ res.json({ ok: true, service: 'app2-field-service-suite-backend', timestamp: new Date().toISOString() });
 });
 
-// ============ AUTH ============
+// ============== AUTH ENDPOINTS ==============
+app.post('/api/auth/login', (req, res) => {
+ const username = String(req.body.username || '').trim().toLowerCase();
+ const password = String(req.body.password || '');
+ const user = users.find((item) => item.username.toLowerCase() === username && item.password === password);
+ if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const username = String(req.body.username || '').trim().toLowerCase();
-    const password = String(req.body.password || '');
-    const users = await listUsers();
-    const user = users.find((item) => item.username.toLowerCase() === username && item.password === password);
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
-
-    const token = crypto.randomBytes(24).toString('hex');
-    const safeUser = toSafeUser(user);
-    sessions.set(token, { user: safeUser, createdAt: Date.now() });
-    
-    logActivity('user_login', `User ${user.username} logged in`, user.id);
-    
-    return res.json({ user: safeUser, token });
-  } catch (error) {
-    return res.status(500).json({ error: 'Login failed' });
-  }
+ const token = crypto.randomBytes(24).toString('hex');
+ const safeUser = toSafeUser(user);
+ sessions.set(token, { user: safeUser, createdAt: Date.now() });
+ return res.json({ user: safeUser, token });
 });
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
-  res.json({ user: req.authUser });
+ res.json({ user: req.authUser });
 });
 
 app.post('/api/auth/logout', requireAuth, (req, res) => {
-  sessions.delete(req.authToken);
-  logActivity('user_logout', `User ${req.authUser.username} logged out`, req.authUser.id);
-  res.json({ ok: true });
+ sessions.delete(req.authToken);
+ res.json({ ok: true });
 });
 
-// ============ CLIENT PORTAL ============
-
-app.post('/api/client/login', async (req, res) => {
-  try {
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const password = String(req.body.password || '');
-    
-    const customers = await listCustomers();
-    const customer = customers.find((c) => c.email.toLowerCase() === email);
-    
-    if (!customer || password !== 'client') {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
-
-    const token = crypto.randomBytes(24).toString('hex');
-    const clientUser = { id: customer.id, username: customer.name, role: 'client', customerId: customer.id };
-    sessions.set(token, { user: clientUser, createdAt: Date.now() });
-    
-    return res.json({ user: clientUser, token });
-  } catch (error) {
-    return res.status(500).json({ error: 'Login failed' });
-  }
+// ============== CUSTOMERS ENDPOINTS ==============
+app.get('/api/customers', requireAuth, (req, res) => {
+ res.json(customers);
 });
 
-app.get('/api/client/jobs', requireAuth, async (req, res) => {
-  if (req.authUser.role !== 'client') {
-    return res.status(403).json({ error: 'Client access only' });
-  }
-  
-  try {
-    const jobs = await listJobs();
-    const clientJobs = jobs.filter(job => job.customerId === req.authUser.customerId);
-    return res.json(clientJobs);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load jobs' });
-  }
+app.post('/api/customers', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { name, email, phone, address } = req.body;
+ 
+ if (!name) return res.status(400).json({ error: 'Customer name is required' });
+ 
+ const newCustomer = {
+   id: `CUST-${String(customers.length + 1).padStart(3, '0')}`,
+   name,
+   email: email || '',
+   phone: phone || '',
+   address: address || '',
+   created_at: new Date().toISOString()
+ };
+ 
+ customers.push(newCustomer);
+ logActivity('customer', newCustomer.id, req.authUser.username, 'created', `New customer added: ${name}`);
+ res.status(201).json(newCustomer);
 });
 
-app.get('/api/client/invoices', requireAuth, async (req, res) => {
-  if (req.authUser.role !== 'client') {
-    return res.status(403).json({ error: 'Client access only' });
-  }
-  
-  try {
-    const invoices = fallbackInvoices.filter(inv => inv.customerId === req.authUser.customerId);
-    const jobs = await listJobs();
-    
-    const invoicesWithDetails = invoices.map(inv => {
-      const job = jobs.find(j => j.id === inv.jobId);
-      return { ...inv, job: job || null };
-    });
-    
-    return res.json(invoicesWithDetails);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load invoices' });
-  }
+app.put('/api/customers/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const customer = customers.find(c => c.id === req.params.id);
+ if (!customer) return res.status(404).json({ error: 'Customer not found' });
+ 
+ const { name, email, phone, address } = req.body;
+ 
+ if (name) customer.name = name;
+ if (email !== undefined) customer.email = email;
+ if (phone !== undefined) customer.phone = phone;
+ if (address !== undefined) customer.address = address;
+ 
+ logActivity('customer', customer.id, req.authUser.username, 'updated', `Customer ${customer.name} updated`);
+ res.json(customer);
 });
 
-// ============ JOBS ============
-
-app.get('/api/jobs', requireAuth, async (req, res) => {
-  try {
-    const jobs = await listJobs();
-    if (req.authUser.role === 'technician') {
-      return res.json(jobs.filter((job) => job.assignedTo === req.authUser.username));
-    }
-    return res.json(jobs);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load jobs' });
-  }
+app.delete('/api/customers/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const index = customers.findIndex(c => c.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Customer not found' });
+ 
+ const customer = customers[index];
+ customers.splice(index, 1);
+ logActivity('customer', customer.id, req.authUser.username, 'deleted', `Customer ${customer.name} deleted`);
+ res.json({ ok: true });
 });
 
-app.post('/api/jobs', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const title = String(req.body.title || '').trim();
-    const priority = normalizePriority(req.body.priority, 'medium');
-    const assignedTo = String(req.body.assignedTo || '').trim();
-    const location = String(req.body.location || '').trim();
-    const customerId = String(req.body.customerId || '').trim();
-    const scheduledDate = String(req.body.scheduledDate || '').trim();
-    const notes = String(req.body.notes || '').trim();
-    const category = normalizeCategory(req.body.category, 'general');
-
-    if (!title) return res.status(400).json({ error: 'Job title is required' });
-
-    const technicianUsernames = await getTechnicianUsernames();
-    if (assignedTo && !technicianUsernames.includes(assignedTo)) {
-      return res.status(400).json({ error: 'Assigned technician not found' });
-    }
-
-    const created = await createJob({ title, priority, assignedTo, location, customerId, scheduledDate, notes, category, createdBy: req.authUser.id });
-    
-    if (customerId) {
-      const customer = await findCustomerById(customerId);
-      if (customer && customer.email) {
-        await sendEmail(
-          customer.email,
-          `New Job Scheduled: ${created.id}`,
-          `Dear ${customer.name},\n\nA new service job has been scheduled for you.\n\nJob: ${title}\nDate: ${scheduledDate || 'TBD'}\nLocation: ${location}\n\nBest regards,\nField Service Suite`
-        );
-      }
-    }
-    
-    return res.status(201).json(created);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to create job' });
-  }
+// ============== JOBS ENDPOINTS ==============
+app.get('/api/jobs', requireAuth, (req, res) => {
+ if (req.authUser.role === 'technician') {
+   return res.json(jobs.filter((job) => job.assignedTo === req.authUser.username).map(normalizeJob));
+ }
+ if (req.authUser.role === 'client') {
+   return res.json(jobs.filter((job) => job.customerId === req.authUser.id).map(normalizeJob));
+ }
+ return res.json(jobs.map(normalizeJob));
 });
 
-app.put('/api/jobs/:id', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const existing = await findJobById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Job not found' });
+app.post('/api/jobs', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { title, priority, assignedTo, location, customerId, scheduledDate, category, notes, projectId, taskId } = req.body;
+ 
+ if (!title) return res.status(400).json({ error: 'Job title is required' });
+ if (priority && !['low', 'medium', 'high', 'urgent'].includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
+ if (assignedTo && !technicianUsernames.includes(assignedTo)) {
+   return res.status(400).json({ error: 'Assigned technician not found' });
+ }
 
-    const title = req.body.title !== undefined ? String(req.body.title || '').trim() : existing.title;
-    const priority = req.body.priority !== undefined ? normalizePriority(req.body.priority, existing.priority) : existing.priority;
-    const status = req.body.status !== undefined ? normalizeStatus(req.body.status, existing.status) : existing.status;
-    const assignedTo = req.body.assignedTo !== undefined ? String(req.body.assignedTo || '').trim() : existing.assignedTo;
-    const location = req.body.location !== undefined ? String(req.body.location || '').trim() : existing.location;
-    const customerId = req.body.customerId !== undefined ? String(req.body.customerId || '').trim() : existing.customerId;
-    const scheduledDate = req.body.scheduledDate !== undefined ? String(req.body.scheduledDate || '').trim() : existing.scheduledDate;
-    const notes = req.body.notes !== undefined ? String(req.body.notes || '').trim() : existing.notes;
-    const category = req.body.category !== undefined ? normalizeCategory(req.body.category, existing.category) : existing.category;
-
-    if (!title) return res.status(400).json({ error: 'Job title is required' });
-
-    const technicianUsernames = await getTechnicianUsernames();
-    if (assignedTo && !technicianUsernames.includes(assignedTo)) {
-      return res.status(400).json({ error: 'Assigned technician not found' });
-    }
-
-    const wasAssigned = !existing.assignedTo && assignedTo;
-    const updated = await updateJob(req.params.id, {
-      title, priority, status: assignedTo ? status : 'new',
-      assignedTo, location: location || 'Unspecified', customerId, scheduledDate, notes, category,
-    });
-    
-    logActivity('job_updated', `Job ${req.params.id} updated`, req.authUser.id);
-    
-    if (wasAssigned && customerId) {
-      const customer = await findCustomerById(customerId);
-      if (customer && customer.email) {
-        await sendEmail(
-          customer.email,
-          `Job Assigned: ${updated.id}`,
-          `Dear ${customer.name},\n\nYour service job has been assigned to a technician.\n\nJob: ${title}\nTechnician: ${assignedTo}\nScheduled: ${scheduledDate || 'TBD'}\n\nBest regards,\nField Service Suite`
-        );
-      }
-    }
-    
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update job' });
-  }
+ const now = new Date().toISOString();
+ const created = {
+   id: nextJobId(),
+   title,
+   status: assignedTo ? 'assigned' : 'new',
+   priority: priority || 'medium',
+   assignedTo: assignedTo || '',
+   location: location || 'Unspecified',
+   customerId: customerId || '',
+   scheduledDate: scheduledDate || '',
+   category: category || 'general',
+   notes: notes || '',
+   created_at: now,
+   updated_at: now,
+   partsUsed: [],
+   materialsUsed: [],
+   worklog: [],
+   technicianNotes: '',
+   completionNotes: '',
+   projectId: projectId || null,
+   taskId: taskId || null
+ };
+ 
+ jobs.unshift(normalizeJob(created));
+ logActivity('job', created.id, req.authUser.username, 'created', `Created job: ${title}`);
+ return res.status(201).json(created);
 });
 
-app.patch('/api/jobs/:id/status', requireAuth, async (req, res) => {
-  try {
-    const existing = await findJobById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Job not found' });
+app.put('/api/jobs/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const existing = findJobById(req.params.id);
+ if (!existing) return res.status(404).json({ error: 'Job not found' });
 
-    const status = normalizeStatus(req.body.status, '');
-    if (!status || status === 'new') return res.status(400).json({ error: 'Invalid status' });
+ const { title, priority, assignedTo, status, location, customerId, scheduledDate, category, notes, projectId, taskId } = req.body;
 
-    if (req.authUser.role === 'technician') {
-      if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
-      if (status === 'assigned') return res.status(400).json({ error: 'Technicians cannot set assigned status' });
-    } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
+ if (title) existing.title = title;
+ if (priority) {
+   if (!['low', 'medium', 'high', 'urgent'].includes(priority)) return res.status(400).json({ error: 'Invalid priority' });
+   existing.priority = priority;
+ }
+ if (assignedTo !== undefined) {
+   if (assignedTo && !technicianUsernames.includes(assignedTo)) return res.status(400).json({ error: 'Assigned technician not found' });
+   existing.assignedTo = assignedTo;
+ }
+ if (status) {
+   if (!['new', 'assigned', 'in-progress', 'completed'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
+   existing.status = status;
+ }
+ if (location !== undefined) existing.location = location;
+ if (customerId !== undefined) existing.customerId = customerId;
+ if (scheduledDate !== undefined) existing.scheduledDate = scheduledDate;
+ if (category !== undefined) existing.category = category;
+ if (notes !== undefined) existing.notes = notes;
+ if (projectId !== undefined) existing.projectId = projectId || null;
+ if (taskId !== undefined) existing.taskId = taskId || null;
+ existing.updated_at = new Date().toISOString();
 
-    const updated = await updateJob(req.params.id, { status });
-    logActivity('status_changed', `Job ${req.params.id} status changed to ${status}`, req.authUser.id);
-    addNotification('job', 'Job Status Updated', `Job ${req.params.id} is now ${status}`, null);
-    
-    if (existing.customerId) {
-      const customer = await findCustomerById(existing.customerId);
-      if (customer && customer.email) {
-        await sendEmail(
-          customer.email,
-          `Job Status Update: ${updated.id}`,
-          `Dear ${customer.name},\n\nYour service job status has been updated.\n\nJob: ${existing.title}\nNew Status: ${status}\n\nBest regards,\nField Service Suite`
-        );
-      }
-    }
-    
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update status' });
-  }
+ return res.json(existing);
 });
 
-// ============ TECHNICIAN FEATURES ============
+app.patch('/api/jobs/:id/status', requireAuth, (req, res) => {
+ const existing = findJobById(req.params.id);
+ if (!existing) return res.status(404).json({ error: 'Job not found' });
 
-app.post('/api/jobs/:id/checkin', requireAuth, requireRoles(['technician']), async (req, res) => {
-  try {
-    const existing = await findJobById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Job not found' });
-    
-    if (existing.assignedTo !== req.authUser.username) {
-      return res.status(403).json({ error: 'Not assigned to this job' });
-    }
+ const status = String(req.body.status || '').trim().toLowerCase();
+ if (!['assigned', 'in-progress', 'completed'].includes(status)) return res.status(400).json({ error: 'Invalid status' });
 
-    const checkinTime = new Date().toISOString();
-    const updated = await updateJob(req.params.id, { status: 'in-progress', checkinTime });
+ if (req.authUser.role === 'technician') {
+   if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+   if (status === 'assigned') return res.status(400).json({ error: 'Technicians cannot set assigned status' });
+ } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
 
-    logActivity('job_checkin', `Technician checked in to job ${req.params.id}`, req.authUser.id);
-    addNotification('job', 'Technician Checked In', `${req.authUser.username} started working on ${req.params.id}`, null);
-
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to check in' });
-  }
+ existing.status = status;
+ existing.updated_at = new Date().toISOString();
+ logActivity('job', existing.id, req.authUser.username, 'status_changed', `Job ${existing.id} status changed to ${status}`);
+ return res.json(existing);
 });
 
-app.post('/api/jobs/:id/checkout', requireAuth, requireRoles(['technician']), async (req, res) => {
-  try {
-    const existing = await findJobById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Job not found' });
-    
-    if (existing.assignedTo !== req.authUser.username) {
-      return res.status(403).json({ error: 'Not assigned to this job' });
-    }
+app.post('/api/jobs/:id/checkin', requireAuth, (req, res) => {
+ const existing = findJobById(req.params.id);
+ if (!existing) return res.status(404).json({ error: 'Job not found' });
 
-    const checkoutTime = new Date().toISOString();
-    const notes = req.body.notes || existing.notes;
-    
-    const updated = await updateJob(req.params.id, { status: 'completed', checkoutTime, notes });
+ if (req.authUser.role === 'technician') {
+   if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+ } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
 
-    logActivity('job_checkout', `Technician completed job ${req.params.id}`, req.authUser.id);
-    addNotification('job', 'Job Completed', `Job ${req.params.id} has been completed`, null);
-    
-    if (existing.customerId) {
-      const customer = await findCustomerById(existing.customerId);
-      if (customer && customer.email) {
-        await sendEmail(
-          customer.email,
-          `Job Completed: ${updated.id}`,
-          `Dear ${customer.name},\n\nGreat news! Your service job has been completed.\n\nJob: ${existing.title}\nCompleted: ${new Date().toLocaleString()}\n\nThank you for choosing Field Service Suite!\n\nBest regards,\nField Service Suite`
-        );
-      }
-    }
+ if (existing.checkoutTime) {
+   return res.status(400).json({ error: 'Job already checked out' });
+ }
+ if (existing.checkinTime) {
+   return res.status(400).json({ error: 'Job already checked in' });
+ }
 
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to check out' });
-  }
+ existing.checkinTime = new Date().toISOString();
+ if (existing.status === 'new' || existing.status === 'assigned') {
+   existing.status = 'in-progress';
+ }
+ existing.updated_at = new Date().toISOString();
+
+ logActivity('job', existing.id, req.authUser.username, 'checkin', `Checked in to ${existing.id}`);
+ return res.json(existing);
 });
 
-app.patch('/api/jobs/:id/notes', requireAuth, async (req, res) => {
-  try {
-    const existing = await findJobById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Job not found' });
+app.post('/api/jobs/:id/checkout', requireAuth, (req, res) => {
+ const existing = findJobById(req.params.id);
+ if (!existing) return res.status(404).json({ error: 'Job not found' });
 
-    if (req.authUser.role === 'technician' && existing.assignedTo !== req.authUser.username) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
+ if (req.authUser.role === 'technician') {
+   if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+ } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
 
-    const notes = String(req.body.notes || '').trim();
-    const updated = await updateJob(req.params.id, { notes });
+ if (!existing.checkinTime) {
+   return res.status(400).json({ error: 'Check in first before checkout' });
+ }
+ if (existing.checkoutTime) {
+   return res.status(400).json({ error: 'Job already checked out' });
+ }
 
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update notes' });
-  }
+ existing.checkoutTime = new Date().toISOString();
+ existing.status = 'completed';
+ if (typeof req.body.notes === 'string') {
+   existing.completionNotes = req.body.notes;
+ }
+ existing.updated_at = new Date().toISOString();
+
+ logActivity('job', existing.id, req.authUser.username, 'checkout', `Checked out from ${existing.id}`);
+ return res.json(existing);
 });
 
-// ============ PHOTOS ============
+app.patch('/api/jobs/:id/worklog', requireAuth, (req, res) => {
+ const existing = findJobById(req.params.id);
+ if (!existing) return res.status(404).json({ error: 'Job not found' });
 
-app.post('/api/jobs/:id/photos', requireAuth, requireRoles(['technician', 'admin', 'dispatcher']), async (req, res) => {
-  try {
-    const existing = await findJobById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Job not found' });
+ const isTechAssigned = req.authUser.role === 'technician' && existing.assignedTo === req.authUser.username;
+ const isManager = ['admin', 'dispatcher'].includes(req.authUser.role);
+ if (!isTechAssigned && !isManager) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
 
-    const photoData = String(req.body.photo || '').trim();
-    if (!photoData) return res.status(400).json({ error: 'Photo data is required' });
+ const { technicianNotes, partsUsed, materialsUsed } = req.body || {};
+ if (technicianNotes !== undefined) {
+   existing.technicianNotes = String(technicianNotes || '');
+ }
+ if (partsUsed !== undefined) {
+   if (!Array.isArray(partsUsed)) return res.status(400).json({ error: 'partsUsed must be an array' });
+   existing.partsUsed = partsUsed;
+ }
+ if (materialsUsed !== undefined) {
+   if (!Array.isArray(materialsUsed)) return res.status(400).json({ error: 'materialsUsed must be an array' });
+   existing.materialsUsed = materialsUsed;
+ }
 
-    const photos = existing.photos || [];
-    const photoId = `PHOTO-${Date.now()}`;
-    photos.push({ id: photoId, data: photoData, uploadedAt: new Date().toISOString() });
-    
-    const updated = await updateJob(req.params.id, { photos });
-    logActivity('photo_added', `Photo added to job ${req.params.id}`, req.authUser.id);
-    
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to add photo' });
-  }
+ existing.worklog.unshift({
+   at: new Date().toISOString(),
+   by: req.authUser.username,
+   technicianNotes: existing.technicianNotes,
+   partsUsed: existing.partsUsed,
+   materialsUsed: existing.materialsUsed,
+ });
+ existing.updated_at = new Date().toISOString();
+ logActivity('job', existing.id, req.authUser.username, 'worklog_updated', `Updated worklog for ${existing.id}`);
+ return res.json(existing);
 });
 
-app.delete('/api/jobs/:id/photos/:photoId', requireAuth, requireRoles(['technician', 'admin', 'dispatcher']), async (req, res) => {
-  try {
-    const existing = await findJobById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Job not found' });
+app.post('/api/jobs/:id/photos', requireAuth, (req, res) => {
+ const existing = findJobById(req.params.id);
+ if (!existing) return res.status(404).json({ error: 'Job not found' });
 
-    const photos = (existing.photos || []).filter(p => p.id !== req.params.photoId);
-    const updated = await updateJob(req.params.id, { photos });
-    
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to remove photo' });
-  }
+ if (req.authUser.role === 'technician') {
+   if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+ } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+
+ const photo = String(req.body.photo || '');
+ const match = photo.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+ if (!match) {
+   return res.status(400).json({ error: 'Invalid photo payload' });
+ }
+ if (photo.length > 8_000_000) {
+   return res.status(400).json({ error: 'Photo is too large' });
+ }
+ const mimeType = match[1];
+ const base64Data = match[2];
+ const ext = mimeType.includes('jpeg') ? 'jpg'
+   : mimeType.includes('png') ? 'png'
+   : mimeType.includes('webp') ? 'webp'
+   : mimeType.includes('gif') ? 'gif'
+   : 'img';
+
+ const fileId = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+ const fileName = `${existing.id}-${fileId}.${ext}`;
+ const filePath = path.join(JOB_UPLOADS_DIR, fileName);
+ fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+
+ if (!Array.isArray(existing.photos)) existing.photos = [];
+ const photoRecord = {
+   id: fileId,
+   data: `/uploads/jobs/${fileName}`,
+   mimeType,
+   uploadedBy: req.authUser.username,
+   uploadedAt: new Date().toISOString(),
+ };
+ existing.photos.push(photoRecord);
+ persistPhotosForJob(existing.id, existing.photos);
+ existing.updated_at = new Date().toISOString();
+
+ logActivity('job', existing.id, req.authUser.username, 'photo_added', `Photo added to ${existing.id}`);
+ return res.status(201).json(photoRecord);
 });
 
-// ============ CUSTOMERS ============
+app.delete('/api/jobs/:id/photos/:photoId', requireAuth, (req, res) => {
+ const existing = findJobById(req.params.id);
+ if (!existing) return res.status(404).json({ error: 'Job not found' });
 
-app.get('/api/customers', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const customers = await listCustomers();
-    return res.json(customers);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load customers' });
-  }
+ if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+
+ if (!Array.isArray(existing.photos) || existing.photos.length === 0) {
+   return res.status(404).json({ error: 'Photo not found' });
+ }
+
+ const photoId = String(req.params.photoId || '');
+ const byIdIndex = existing.photos.findIndex((p) => String(p.id || '') === photoId);
+ const byIndex = Number.isInteger(Number(photoId)) ? Number(photoId) : -1;
+ const index = byIdIndex >= 0 ? byIdIndex : byIndex;
+
+ if (index < 0 || index >= existing.photos.length) {
+   return res.status(404).json({ error: 'Photo not found' });
+ }
+
+ const [removed] = existing.photos.splice(index, 1);
+ if (removed && typeof removed.data === 'string' && removed.data.startsWith('/uploads/jobs/')) {
+   const filePath = path.join(UPLOADS_DIR, removed.data.replace(/^\/uploads\//, '').replace(/\//g, path.sep));
+   try {
+     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+   } catch (_) {}
+ }
+ persistPhotosForJob(existing.id, existing.photos);
+ existing.updated_at = new Date().toISOString();
+ logActivity('job', existing.id, req.authUser.username, 'photo_removed', `Photo removed from ${existing.id}`);
+ return res.json({ ok: true });
 });
 
-app.post('/api/customers', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const name = String(req.body.name || '').trim();
-    const email = String(req.body.email || '').trim();
-    const phone = String(req.body.phone || '').trim();
-    const address = String(req.body.address || '').trim();
-    const notes = String(req.body.notes || '').trim();
-
-    if (!name) return res.status(400).json({ error: 'Customer name is required' });
-
-    const created = await createCustomer({ name, email, phone, address, notes, createdBy: req.authUser.id });
-    return res.status(201).json(created);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to create customer' });
-  }
+// ============== SCHEDULE ENDPOINT ==============
+app.get('/api/schedule', requireAuth, (req, res) => {
+ const scheduledJobs = jobs.filter(job => job.scheduledDate).filter((job) => {
+   if (req.authUser.role === 'technician') return job.assignedTo === req.authUser.username;
+   if (req.authUser.role === 'client') return job.customerId === req.authUser.id;
+   return true;
+ });
+ res.json(scheduledJobs);
 });
 
-app.put('/api/customers/:id', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const existing = await findCustomerById(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Customer not found' });
-
-    const name = req.body.name !== undefined ? String(req.body.name || '').trim() : existing.name;
-    const email = req.body.email !== undefined ? String(req.body.email || '').trim() : existing.email;
-    const phone = req.body.phone !== undefined ? String(req.body.phone || '').trim() : existing.phone;
-    const address = req.body.address !== undefined ? String(req.body.address || '').trim() : existing.address;
-    const notes = req.body.notes !== undefined ? String(req.body.notes || '').trim() : existing.notes;
-
-    if (!name) return res.status(400).json({ error: 'Customer name is required' });
-
-    const updated = await updateCustomer(req.params.id, { name, email, phone, address, notes });
-    logActivity('customer_updated', `Customer ${req.params.id} updated`, req.authUser.id);
-    
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update customer' });
-  }
+// ============== INVOICES ENDPOINTS ==============
+app.get('/api/invoices', requireAuth, (req, res) => {
+ if (req.authUser.role === 'client') {
+   return res.json(invoices.filter((invoice) => invoice.customerId === req.authUser.id));
+ }
+ return res.json(invoices);
 });
 
-app.delete('/api/customers/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
-  try {
-    const deleted = await deleteCustomer(req.params.id);
-    if (!deleted) return res.status(404).json({ error: 'Customer not found' });
-    logActivity('customer_deleted', `Customer ${req.params.id} deleted`, req.authUser.id);
-    return res.json({ ok: true });
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to delete customer' });
-  }
+app.post('/api/invoices', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { jobId, customerId, amount, description } = req.body;
+ 
+ if (!jobId || !customerId || !amount) {
+   return res.status(400).json({ error: 'Job ID, Customer ID, and Amount are required' });
+ }
+ 
+ const newInvoice = {
+   id: nextInvoiceId(),
+   jobId,
+   customerId,
+   amount: parseFloat(amount),
+   status: 'pending',
+   issuedDate: new Date().toISOString().split('T')[0],
+   paidDate: null,
+   description: description || ''
+ };
+ 
+ invoices.push(newInvoice);
+ logActivity('invoice', newInvoice.id, req.authUser.username, 'created', `Invoice ${newInvoice.id} created for $${amount}`);
+ res.status(201).json(newInvoice);
 });
 
-// ============ INVOICES ============
-
-app.get('/api/invoices', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const jobs = await listJobs();
-    const customers = await listCustomers();
-    
-    const invoicesWithDetails = fallbackInvoices.map(inv => {
-      const job = jobs.find(j => j.id === inv.jobId);
-      const customer = customers.find(c => c.id === inv.customerId);
-      return { ...inv, job: job || null, customer: customer || null };
-    });
-    
-    return res.json(invoicesWithDetails);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load invoices' });
-  }
+app.patch('/api/invoices/:id/status', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const invoice = invoices.find(i => i.id === req.params.id);
+ if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+ 
+ const { status } = req.body;
+ if (!['pending', 'paid'].includes(status)) {
+   return res.status(400).json({ error: 'Invalid status' });
+ }
+ 
+ invoice.status = status;
+ if (status === 'paid') {
+   invoice.paidDate = new Date().toISOString().split('T')[0];
+ }
+ 
+ logActivity('invoice', invoice.id, req.authUser.username, status === 'paid' ? 'paid' : 'status_changed', 
+   `Invoice ${invoice.id} ${status === 'paid' ? 'paid in full' : 'status changed to ' + status}`);
+ res.json(invoice);
 });
 
-app.post('/api/invoices', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const jobId = String(req.body.jobId || '').trim();
-    const customerId = String(req.body.customerId || '').trim();
-    const amount = parseFloat(req.body.amount) || 0;
-    const items = req.body.items || [];
-
-    if (!jobId) return res.status(400).json({ error: 'Job ID is required' });
-    
-    const job = await findJobById(jobId);
-    if (!job) return res.status(404).json({ error: 'Job not found' });
-    
-    if (job.invoiceId) return res.status(400).json({ error: 'Job already has an invoice' });
-
-    const created = await createInvoice({ 
-      jobId, 
-      customerId: customerId || job.customerId, 
-      amount, 
-      items,
-      createdBy: req.authUser.id
-    });
-    
-    return res.status(201).json(created);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to create invoice' });
-  }
+// ============== ACTIVITY ENDPOINT ==============
+app.get('/api/activity', requireAuth, (req, res) => {
+ const limit = parseInt(req.query.limit) || 50;
+ res.json(activityLogs.slice(0, limit));
 });
 
-app.patch('/api/invoices/:id/status', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const status = String(req.body.status || '').trim();
-    if (!['pending', 'paid', 'cancelled'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-
-    const updated = await updateInvoice(req.params.id, { status, paidBy: req.authUser.id });
-    if (!updated) return res.status(404).json({ error: 'Invoice not found' });
-
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update invoice' });
-  }
+// ============== NOTIFICATIONS ENDPOINT ==============
+app.get('/api/notifications', requireAuth, (req, res) => {
+ const userNotifications = notifications
+   .filter((n) => n.user_id === req.authUser.username || n.user_id === 'all')
+   .map((n) => ({
+     ...n,
+     createdAt: n.createdAt || n.timestamp || new Date().toISOString(),
+   }))
+   .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+ res.json(userNotifications);
 });
 
-app.get('/api/invoices/:id/pdf', requireAuth, async (req, res) => {
-  try {
-    const invoice = fallbackInvoices.find(inv => inv.id === req.params.id);
-    if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
-    
-    const job = await findJobById(invoice.jobId);
-    const customer = await findCustomerById(invoice.customerId);
-    
-    const pdfContent = generatePDFInvoice(invoice, job, customer);
-    
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', `attachment; filename=invoice-${invoice.id}.txt`);
-    return res.send(pdfContent);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to generate invoice' });
-  }
+// ============== DASHBOARD SUMMARY ==============
+app.get('/api/dashboard/summary', requireAuth, (req, res) => {
+ const total = jobs.length;
+ const newCount = jobs.filter((job) => job.status === 'new').length;
+ const assignedCount = jobs.filter((job) => job.status === 'assigned').length;
+ const inProgressCount = jobs.filter((job) => job.status === 'in-progress').length;
+ const completedCount = jobs.filter((job) => job.status === 'completed').length;
+ 
+ const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (i.amount || 0), 0);
+ const pendingRevenue = invoices.filter(i => i.status === 'pending').reduce((sum, i) => sum + (i.amount || 0), 0);
+
+ res.json({
+   totalJobs: total,
+   newJobs: newCount,
+   assignedJobs: assignedCount,
+   inProgressJobs: inProgressCount,
+   completedJobs: completedCount,
+   totalCustomers: customers.length,
+   totalInvoices: invoices.length,
+   paidInvoices: invoices.filter(i => i.status === 'paid').length,
+   pendingInvoices: invoices.filter(i => i.status === 'pending').length,
+   totalRevenue,
+   pendingRevenue,
+   role: req.authUser.role,
+   recentActivity: activityLogs.slice(0, 10)
+ });
 });
 
-// ============ SCHEDULE ============
-
-app.get('/api/schedule', requireAuth, async (req, res) => {
-  try {
-    const jobs = await listJobs();
-    const customers = await listCustomers();
-    
-    const scheduledJobs = jobs.filter(job => job.scheduledDate);
-    
-    const schedule = scheduledJobs.map(job => {
-      const customer = customers.find(c => c.id === job.customerId);
-      return { ...job, customerName: customer ? customer.name : 'Unknown' };
-    });
-
-    schedule.sort((a, b) => {
-      if (!a.scheduledDate) return 1;
-      if (!b.scheduledDate) return -1;
-      return new Date(a.scheduledDate) - new Date(b.scheduledDate);
-    });
-
-    return res.json(schedule);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load schedule' });
-  }
+// ============== CLIENT PORTAL ENDPOINTS ==============
+app.get('/api/client/jobs', requireAuth, (req, res) => {
+ if (req.authUser.role !== 'client') return res.status(403).json({ error: 'Forbidden' });
+ const clientJobs = jobs.filter((job) => job.customerId === req.authUser.id).map(normalizeJob);
+ res.json(clientJobs);
 });
 
-// ============ NOTIFICATIONS ============
-
-app.get('/api/notifications', requireAuth, async (req, res) => {
-  try {
-    const userNotifications = notifications.slice(0, 20);
-    return res.json(userNotifications);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load notifications' });
-  }
+app.get('/api/client/invoices', requireAuth, (req, res) => {
+ if (req.authUser.role !== 'client') return res.status(403).json({ error: 'Forbidden' });
+ const clientInvoices = invoices.filter((invoice) => invoice.customerId === req.authUser.id);
+ res.json(clientInvoices);
 });
 
-app.patch('/api/notifications/:id/read', requireAuth, async (req, res) => {
-  try {
-    const notif = notifications.find(n => n.id === req.params.id);
-    if (!notif) return res.status(404).json({ error: 'Notification not found' });
-    
-    notif.read = true;
-    return res.json(notif);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to mark notification as read' });
-  }
+app.post('/api/client/login', (req, res) => {
+ const email = String(req.body.email || '').trim().toLowerCase();
+ const password = String(req.body.password || '');
+ 
+ // Simple client login - find customer by email
+ const customer = customers.find(c => c.email.toLowerCase() === email);
+ if (!customer) return res.status(401).json({ error: 'Invalid credentials' });
+ 
+ // For demo, accept any password
+ const token = crypto.randomBytes(24).toString('hex');
+ sessions.set(token, { user: { id: customer.id, username: customer.name, role: 'client', email: customer.email }, createdAt: Date.now() });
+ return res.json({ 
+   token, 
+   user: { id: customer.id, username: customer.name, role: 'client', email: customer.email }
+ });
 });
 
-// ============ EMAIL LOG ============
+// ============== PLANNER API ENDPOINTS =============
 
-app.get('/api/emails', requireAuth, requireRoles(['admin']), async (req, res) => {
-  try {
-    return res.json(emailQueue.slice(0, 50));
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load email log' });
-  }
+// Get all projects
+app.get('/api/projects', requireAuth, (req, res) => {
+ res.json(projects);
 });
 
-// ============ ACTIVITY LOG ============
-
-app.get('/api/activity', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit) || 50;
-    const logs = fallbackActivityLogs.slice(0, limit);
-    return res.json(logs);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load activity log' });
-  }
+// Create new project
+app.post('/api/projects', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { title, description, start_date, end_date } = req.body;
+ 
+ if (!title) return res.status(400).json({ error: 'Project title is required' });
+ 
+ const newProject = {
+   id: `proj-${Date.now()}`,
+   title,
+   description: description || '',
+   start_date: start_date || null,
+   end_date: end_date || null,
+   status: 'planning',
+   overall_progress: 0,
+   created_by: req.authUser.username,
+   created_at: new Date().toISOString(),
+   updated_at: new Date().toISOString()
+ };
+ 
+ projects.push(newProject);
+ logActivity('project', newProject.id, req.authUser.username, 'created', `Created project: ${title}`);
+ res.status(201).json(newProject);
 });
 
-// ============ EXPORT ============
-
-app.get('/api/export/jobs', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const jobs = await listJobs();
-    const customers = await listCustomers();
-    
-    const headers = ['ID', 'Title', 'Status', 'Priority', 'Assigned To', 'Location', 'Customer', 'Scheduled Date', 'Category', 'Check-in', 'Check-out', 'Notes'];
-    const rows = jobs.map(job => {
-      const customer = customers.find(c => c.id === job.customerId);
-      return [
-        job.id,
-        `"${job.title}"`,
-        job.status,
-        job.priority,
-        job.assignedTo || 'Unassigned',
-        `"${job.location}"`,
-        customer ? customer.name : 'Unknown',
-        job.scheduledDate || '',
-        job.category || 'general',
-        job.checkinTime || '',
-        job.checkoutTime || '',
-        `"${(job.notes || '').replace(/"/g, '""')}"`
-      ].join(',');
-    });
-    
-    const csv = [headers.join(','), ...rows].join('\n');
-    
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=jobs-export-${new Date().toISOString().split('T')[0]}.csv`);
-    return res.send(csv);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to export jobs' });
-  }
+// Get single project
+app.get('/api/projects/:id', requireAuth, (req, res) => {
+ const project = projects.find(p => p.id === req.params.id);
+ if (!project) return res.status(404).json({ error: 'Project not found' });
+ res.json(project);
 });
 
-app.get('/api/export/customers', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const customers = await listCustomers();
-    
-    const headers = ['ID', 'Name', 'Email', 'Phone', 'Address', 'Notes'];
-    const rows = customers.map(customer => [
-      customer.id,
-      `"${customer.name}"`,
-      customer.email,
-      customer.phone,
-      `"${customer.address}"`,
-      `"${(customer.notes || '').replace(/"/g, '""')}"`
-    ].join(','));
-    
-    const csv = [headers.join(','), ...rows].join('\n');
-    
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=customers-export-${new Date().toISOString().split('T')[0]}.csv`);
-    return res.send(csv);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to export customers' });
-  }
+// Update project
+app.put('/api/projects/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const project = projects.find(p => p.id === req.params.id);
+ if (!project) return res.status(404).json({ error: 'Project not found' });
+ 
+ const { title, description, start_date, end_date, status } = req.body;
+ 
+ if (title) project.title = title;
+ if (description !== undefined) project.description = description;
+ if (start_date !== undefined) project.start_date = start_date;
+ if (end_date !== undefined) project.end_date = end_date;
+ if (status && req.authUser.role === 'admin') project.status = status;
+ project.updated_at = new Date().toISOString();
+ 
+ logActivity('project', project.id, req.authUser.username, 'updated', `Project ${project.title} updated`);
+ res.json(project);
 });
 
-// ============ DASHBOARD ============
-
-app.get('/api/dashboard/summary', requireAuth, async (req, res) => {
-  try {
-    const jobs = await listJobs();
-    const customers = await listCustomers();
-    const invoices = [...fallbackInvoices];
-    
-    const total = jobs.length;
-    const newCount = jobs.filter((job) => job.status === 'new').length;
-    const assignedCount = jobs.filter((job) => job.status === 'assigned').length;
-    const inProgressCount = jobs.filter((job) => job.status === 'in-progress').length;
-    const completedCount = jobs.filter((job) => job.status === 'completed').length;
-    
-    const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + (i.amount || 0), 0);
-    const pendingInvoices = invoices.filter(i => i.status === 'pending').length;
-    
-    const technicians = await getTechnicianUsernames();
-    const techStats = technicians.map(tech => {
-      const techJobs = jobs.filter(j => j.assignedTo === tech);
-      return {
-        username: tech,
-        totalJobs: techJobs.length,
-        completed: techJobs.filter(j => j.status === 'completed').length,
-        inProgress: techJobs.filter(j => j.status === 'in-progress').length,
-      };
-    });
-
-    const categoryStats = {};
-    jobs.forEach(job => {
-      const cat = job.category || 'general';
-      categoryStats[cat] = (categoryStats[cat] || 0) + 1;
-    });
-
-    res.json({
-      totalJobs: total,
-      newJobs: newCount,
-      assignedJobs: assignedCount,
-      inProgressJobs: inProgressCount,
-      completedJobs: completedCount,
-      totalCustomers: customers.length,
-      totalRevenue,
-      pendingInvoices,
-      role: req.authUser.role,
-      usingFallback: !useDb(),
-      technicianStats: techStats,
-      categoryStats,
-      recentActivity: fallbackActivityLogs.slice(0, 5),
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load dashboard summary' });
-  }
+// Delete project
+app.delete('/api/projects/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const index = projects.findIndex(p => p.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Project not found' });
+ 
+ const project = projects[index];
+ const taskIndices = tasks.map((t, i) => t.project_id === req.params.id ? i : -1).filter(i => i >= 0).reverse();
+ taskIndices.forEach(i => tasks.splice(i, 1));
+ 
+ projects.splice(index, 1);
+ logActivity('project', project.id, req.authUser.username, 'deleted', `Project ${project.title} deleted`);
+ res.json({ ok: true });
 });
 
-// ============ PROJECTS ============
-
-app.get('/api/projects', requireAuth, async (req, res) => {
-  try {
-    const projectsWithProgress = fallbackProjects.map(project => ({
-      ...project,
-      progress: calculateProjectProgress(project.id),
-      taskCount: fallbackTasks.filter(t => t.projectId === project.id).length,
-      completedTaskCount: fallbackTasks.filter(t => t.projectId === project.id && t.status === 'completed').length,
-    }));
-    
-    // Auto-update overdue status
-    const today = new Date().toISOString().split('T')[0];
-    projectsWithProgress.forEach(project => {
-      if (project.targetDeadline < today && project.status !== 'completed') {
-        project.status = 'overdue';
-      }
-    });
-    
-    return res.json(projectsWithProgress);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load projects' });
-  }
+// Get tasks for a project
+app.get('/api/projects/:id/tasks', requireAuth, (req, res) => {
+ const projectTasks = tasks.filter(t => t.project_id === req.params.id);
+ res.json(projectTasks);
 });
 
-app.post('/api/projects', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const title = String(req.body.title || '').trim();
-    const description = String(req.body.description || '').trim();
-    const startDate = String(req.body.startDate || '').trim();
-    const targetDeadline = String(req.body.targetDeadline || '').trim();
-    const priority = normalizePriority(req.body.priority, 'medium');
-
-    if (!title) return res.status(400).json({ error: 'Project title is required' });
-
-    const created = {
-      id: nextProjectIdFromList(fallbackProjects),
-      title,
-      description,
-      startDate,
-      targetDeadline,
-      priority,
-      status: 'not_started',
-      progress: 0,
-      createdBy: req.authUser.id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    fallbackProjects.unshift(created);
-    logActivity('project_created', `Project ${created.id} created: ${created.title}`, req.authUser.id);
-    addNotification('project', 'Project Created', `${created.id}: ${created.title}`, null);
-    
-    return res.status(201).json(created);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create project' });
-  }
+// Create task
+app.post('/api/tasks', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { project_id, parent_task_id, name, start_date, end_date, progress_percent, weight, notes, sort_order, assignee, estimated_cost, actual_cost, dependency_ids, is_milestone } = req.body;
+ 
+ if (!project_id || !name) {
+   return res.status(400).json({ error: 'Project ID and task name are required' });
+ }
+ 
+ const project = projects.find(p => p.id === project_id);
+ if (!project) return res.status(404).json({ error: 'Project not found' });
+ 
+ const duration_days = calculateDuration(start_date, end_date);
+ const status = calculateTaskStatus(progress_percent || 0, end_date);
+ const taskWeight = weight || 1;
+ 
+ const newTask = {
+   id: `task-${Date.now()}`,
+   project_id,
+   parent_task_id: parent_task_id || null,
+   name,
+   start_date: start_date || null,
+   end_date: end_date || null,
+   duration_days,
+   progress_percent: progress_percent || 0,
+   weight: taskWeight,
+   status,
+   sort_order: sort_order || tasks.length + 1,
+   notes: notes || '',
+   assignee: assignee || '',
+   estimated_cost: estimated_cost || 0,
+   actual_cost: actual_cost || 0,
+   dependency_ids: dependency_ids || [],
+   is_milestone: is_milestone || false,
+   updated_by: req.authUser.username,
+   updated_at: new Date().toISOString()
+ };
+ 
+ tasks.push(newTask);
+ recalculateProject(project_id);
+ logActivity('task', newTask.id, req.authUser.username, 'created', `Created task: ${name}`);
+ res.status(201).json(newTask);
 });
 
-app.put('/api/projects/:id', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const idx = fallbackProjects.findIndex(p => String(p.id) === String(req.params.id));
-    if (idx === -1) return res.status(404).json({ error: 'Project not found' });
-
-    const existing = fallbackProjects[idx];
-    const title = req.body.title !== undefined ? String(req.body.title || '').trim() : existing.title;
-    const description = req.body.description !== undefined ? String(req.body.description || '').trim() : existing.description;
-    const startDate = req.body.startDate !== undefined ? String(req.body.startDate || '').trim() : existing.startDate;
-    const targetDeadline = req.body.targetDeadline !== undefined ? String(req.body.targetDeadline || '').trim() : existing.targetDeadline;
-    const priority = req.body.priority !== undefined ? normalizePriority(req.body.priority, existing.priority) : existing.priority;
-    const status = req.body.status !== undefined ? String(req.body.status || '').trim().toLowerCase() : existing.status;
-
-    if (!title) return res.status(400).json({ error: 'Project title is required' });
-    if (!['not_started', 'active', 'on_hold', 'completed', 'overdue'].includes(status)) {
-      return res.status(400).json({ error: 'Invalid status' });
-    }
-
-    fallbackProjects[idx] = {
-      ...existing,
-      title,
-      description,
-      startDate,
-      targetDeadline,
-      priority,
-      status,
-      updatedAt: new Date().toISOString(),
-    };
-
-    logActivity('project_updated', `Project ${req.params.id} updated`, req.authUser.id);
-    return res.json(fallbackProjects[idx]);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to update project' });
-  }
+// Update task
+app.put('/api/tasks/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const task = tasks.find(t => t.id === req.params.id);
+ if (!task) return res.status(404).json({ error: 'Task not found' });
+ 
+ const { name, parent_task_id, start_date, end_date, progress_percent, weight, notes, sort_order, assignee, estimated_cost, actual_cost, dependency_ids, is_milestone } = req.body;
+ 
+ if (name !== undefined) task.name = name;
+ if (parent_task_id !== undefined) task.parent_task_id = parent_task_id;
+ if (start_date !== undefined) task.start_date = start_date;
+ if (end_date !== undefined) task.end_date = end_date;
+ if (progress_percent !== undefined) task.progress_percent = progress_percent;
+ if (weight !== undefined) task.weight = weight;
+ if (notes !== undefined) task.notes = notes;
+ if (sort_order !== undefined) task.sort_order = sort_order;
+ if (assignee !== undefined) task.assignee = assignee;
+ if (estimated_cost !== undefined) task.estimated_cost = estimated_cost;
+ if (actual_cost !== undefined) task.actual_cost = actual_cost;
+ if (dependency_ids !== undefined) task.dependency_ids = dependency_ids;
+ if (is_milestone !== undefined) task.is_milestone = is_milestone;
+ 
+ task.duration_days = calculateDuration(task.start_date, task.end_date);
+ task.status = calculateTaskStatus(task.progress_percent, task.end_date);
+ task.updated_by = req.authUser.username;
+ task.updated_at = new Date().toISOString();
+ 
+ recalculateProject(task.project_id);
+ logActivity('task', task.id, req.authUser.username, 'updated', `Task ${task.name} updated`);
+ res.json(task);
 });
 
-app.delete('/api/projects/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
-  try {
-    const idx = fallbackProjects.findIndex(p => String(p.id) === String(req.params.id));
-    if (idx === -1) return res.status(404).json({ error: 'Project not found' });
-
-    // Delete all tasks associated with the project
-    const taskIndices = [];
-    fallbackTasks.forEach((t, i) => {
-      if (String(t.projectId) === String(req.params.id)) {
-        taskIndices.push(i);
-      }
-    });
-    
-    // Remove tasks in reverse order to maintain indices
-    for (let i = taskIndices.length - 1; i >= 0; i--) {
-      fallbackTasks.splice(taskIndices[i], 1);
-    }
-
-    fallbackProjects.splice(idx, 1);
-    logActivity('project_deleted', `Project ${req.params.id} deleted`, req.authUser.id);
-    
-    return res.json({ ok: true });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to delete project' });
-  }
+// Delete task
+app.delete('/api/tasks/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const task = tasks.find(t => t.id === req.params.id);
+ if (!task) return res.status(404).json({ error: 'Task not found' });
+ 
+ const projectId = task.project_id;
+ 
+ const deleteChildren = (parentId) => {
+   const children = tasks.filter(t => t.parent_task_id === parentId);
+   children.forEach(child => deleteChildren(child.id));
+   const index = tasks.findIndex(t => t.id === parentId);
+   if (index >= 0) tasks.splice(index, 1);
+ };
+ 
+ deleteChildren(req.params.id);
+ recalculateProject(projectId);
+ logActivity('task', task.id, req.authUser.username, 'deleted', `Task ${task.name} deleted`);
+ res.json({ ok: true });
 });
 
-// ============ TIMELINE PLANNER - CALCULATION ENGINE ============
+// Update task progress
+app.patch('/api/tasks/:id/progress', requireAuth, (req, res) => {
+ const task = tasks.find(t => t.id === req.params.id);
+ if (!task) return res.status(404).json({ error: 'Task not found' });
+ 
+ const oldValue = task.progress_percent;
+ task.progress_percent = Math.min(100, Math.max(0, req.body.progress_percent || 0));
+ task.status = calculateTaskStatus(task.progress_percent, task.end_date);
+ task.updated_by = req.authUser.username;
+ task.updated_at = new Date().toISOString();
+ 
+ recalculateProject(task.project_id);
+ logActivity('task', task.id, req.authUser.username, 'progress_updated', `Task ${task.name} progress: ${oldValue}% → ${task.progress_percent}%`);
+ res.json(task);
+});
 
-const HOUR_MS = 60 * 60 * 1000;
-const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+// Update task dates
+app.patch('/api/tasks/:id/dates', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const task = tasks.find(t => t.id === req.params.id);
+ if (!task) return res.status(404).json({ error: 'Task not found' });
+ 
+ const oldStart = task.start_date;
+ const oldEnd = task.end_date;
+ 
+ if (req.body.start_date !== undefined) task.start_date = req.body.start_date;
+ if (req.body.end_date !== undefined) task.end_date = req.body.end_date;
+ 
+ task.duration_days = calculateDuration(task.start_date, task.end_date);
+ task.status = calculateTaskStatus(task.progress_percent, task.end_date);
+ task.updated_by = req.authUser.username;
+ task.updated_at = new Date().toISOString();
+ 
+ recalculateProject(task.project_id);
+ logActivity('task', task.id, req.authUser.username, 'dates_updated', 
+   `Task ${task.name} dates updated: ${oldStart || 'N/A'} - ${oldEnd || 'N/A'} → ${task.start_date || 'N/A'} - ${task.end_date || 'N/A'}`);
+ res.json(task);
+});
 
-const roundToHourIso = (date = new Date()) => {
-  const d = new Date(date);
-  d.setMinutes(0, 0, 0);
-  return d.toISOString();
+// Get planner timeline data
+app.get('/api/projects/:id/planner', requireAuth, (req, res) => {
+ const project = projects.find(p => p.id === req.params.id);
+ if (!project) return res.status(404).json({ error: 'Project not found' });
+ 
+ const projectTasks = tasks.filter(t => t.project_id === req.params.id);
+ 
+ const summary = {
+   total: projectTasks.length,
+   completed: projectTasks.filter(t => t.status === 'completed').length,
+   inProgress: projectTasks.filter(t => t.status === 'in_progress').length,
+   delayed: projectTasks.filter(t => t.status === 'delayed').length,
+   notStarted: projectTasks.filter(t => t.status === 'not_started').length,
+   overallProgress: project.overall_progress,
+   startDate: project.start_date,
+   endDate: project.end_date,
+   status: project.status,
+   totalWeight: projectTasks.reduce((sum, t) => sum + (t.weight || 1), 0)
+ };
+ 
+ const timelineData = projectTasks.map(task => ({
+   ...task,
+   timelineStart: task.start_date ? new Date(task.start_date).getTime() : null,
+   timelineEnd: task.end_date ? new Date(task.end_date).getTime() : null,
+   duration: task.duration_days,
+   progressContribution: calculateTaskContribution(task)
+ }));
+ 
+ res.json({ project, tasks: timelineData, summary });
+});
+
+const csvValue = (value) => {
+ if (value === null || value === undefined) return '';
+ const raw = String(value);
+ if (/[",\n]/.test(raw)) {
+   return `"${raw.replace(/"/g, '""')}"`;
+ }
+ return raw;
 };
 
-const statusMap = {
-  pending: 'scheduled',
-  'not_started': 'scheduled',
-  'in-progress': 'in_progress',
-  in_progress: 'in_progress',
-  paused: 'paused',
-  completed: 'completed',
-  scheduled: 'scheduled',
+const toCsv = (rows, columns) => {
+ const header = columns.map((c) => csvValue(c.label)).join(',');
+ const lines = rows.map((row) => columns.map((c) => csvValue(row[c.key])).join(','));
+ return [header, ...lines].join('\n');
 };
 
-const normalizeTaskStatus = (value, fallback = 'scheduled') => {
-  const key = String(value || '').trim().toLowerCase();
-  return statusMap[key] || fallback;
-};
+app.get('/api/export/jobs', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const rows = jobs.map((job) => {
+   const customer = customers.find((c) => c.id === job.customerId);
+   return {
+     id: job.id,
+     title: job.title,
+     status: job.status,
+     priority: job.priority,
+     assignedTo: job.assignedTo || '',
+     customer: customer ? customer.name : '',
+     location: job.location || '',
+     scheduledDate: job.scheduledDate || '',
+     category: job.category || '',
+     notes: job.notes || '',
+     createdAt: job.created_at || '',
+     checkinTime: job.checkinTime || '',
+     checkoutTime: job.checkoutTime || '',
+   };
+ });
 
-const normalizeIsoInput = (value) => {
-  if (!value) return '';
-  if (ISO_RE.test(String(value))) {
-    const d = new Date(value);
-    if (!Number.isNaN(d.getTime())) return d.toISOString();
-  }
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString();
-};
+ const csv = toCsv(rows, [
+   { key: 'id', label: 'Job ID' },
+   { key: 'title', label: 'Title' },
+   { key: 'status', label: 'Status' },
+   { key: 'priority', label: 'Priority' },
+   { key: 'assignedTo', label: 'Assigned To' },
+   { key: 'customer', label: 'Customer' },
+   { key: 'location', label: 'Location' },
+   { key: 'scheduledDate', label: 'Scheduled Date' },
+   { key: 'category', label: 'Category' },
+   { key: 'notes', label: 'Notes' },
+   { key: 'createdAt', label: 'Created At' },
+   { key: 'checkinTime', label: 'Check-in Time' },
+   { key: 'checkoutTime', label: 'Checkout Time' },
+ ]);
 
-const toDateOnly = (isoValue) => {
-  const d = new Date(isoValue);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toISOString().split('T')[0];
-};
-
-const hoursBetween = (startIso, endIso) => {
-  const start = new Date(startIso);
-  const end = new Date(endIso);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
-  return (end.getTime() - start.getTime()) / HOUR_MS;
-};
-
-const computePlannedDuration = (task) => Math.max(0, hoursBetween(task.plannedStart, task.plannedEnd));
-const computeActualDuration = (task) => {
-  if (!task.actualStart) return 0;
-  const endRef = task.actualEnd || new Date().toISOString();
-  return Math.max(0, hoursBetween(task.actualStart, endRef));
-};
-
-const computeProgressFromDurations = (task) => {
-  if (task.status === 'completed') return 100;
-  const planned = computePlannedDuration(task);
-  if (planned <= 0) return task.status === 'in_progress' ? 35 : 0;
-  const actual = computeActualDuration(task);
-  return Math.max(0, Math.min(99, Math.round((actual / planned) * 100)));
-};
-
-const ensureTaskModel = (task) => {
-  const assignedUserId = String(task.assignedUserId || task.assignedTo || '').trim();
-  const plannedStart = normalizeIsoInput(task.plannedStart || (task.startDate ? `${task.startDate}T08:00:00` : roundToHourIso()));
-  const plannedEnd = normalizeIsoInput(task.plannedEnd || (task.dueDate ? `${task.dueDate}T17:00:00` : new Date(new Date(plannedStart || Date.now()).getTime() + 8 * HOUR_MS).toISOString()));
-  let status = normalizeTaskStatus(task.status, 'scheduled');
-
-  const actualStart = normalizeIsoInput(task.actualStart || '');
-  const actualEnd = normalizeIsoInput(task.actualEnd || '');
-
-  if (!actualStart && status === 'in_progress') status = 'scheduled';
-  if (actualEnd) status = 'completed';
-
-  const next = {
-    ...task,
-    assignedUserId,
-    assignedTo: assignedUserId,
-    plannedStart,
-    plannedEnd,
-    actualStart: actualStart || null,
-    actualEnd: actualEnd || null,
-    status,
-    startDate: toDateOnly(plannedStart),
-    dueDate: toDateOnly(plannedEnd),
-  };
-
-  next.progress = task.progress != null ? Number(task.progress) : computeProgressFromDurations(next);
-  if (Number.isNaN(next.progress)) next.progress = computeProgressFromDurations(next);
-  return next;
-};
-
-for (let i = 0; i < fallbackTasks.length; i += 1) {
-  fallbackTasks[i] = ensureTaskModel(fallbackTasks[i]);
-}
-
-const calculateProjectProgressByDuration = (projectId) => {
-  const projectTasks = fallbackTasks.filter((t) => String(t.projectId) === String(projectId));
-  if (!projectTasks.length) return 0;
-
-  let weighted = 0;
-  let totalPlanned = 0;
-
-  projectTasks.forEach((task) => {
-    const enhanced = ensureTaskModel(task);
-    const planned = Math.max(1, computePlannedDuration(enhanced));
-    weighted += planned * computeProgressFromDurations(enhanced);
-    totalPlanned += planned;
-  });
-
-  if (!totalPlanned) return 0;
-  return Math.round(weighted / totalPlanned);
-};
-
-const getEnhancedTask = (task) => {
-  const normalized = ensureTaskModel(task);
-  const plannedDuration = computePlannedDuration(normalized);
-  const actualDuration = normalized.actualStart ? computeActualDuration(normalized) : 0;
-  const variance = normalized.actualEnd ? actualDuration - plannedDuration : null;
-
-  return {
-    ...normalized,
-    plannedDurationHours: Number(plannedDuration.toFixed(2)),
-    actualDurationHours: Number(actualDuration.toFixed(2)),
-    varianceHours: variance == null ? null : Number(variance.toFixed(2)),
-    computedStatus: normalized.status,
-    duration: Number((plannedDuration / 24).toFixed(2)),
-    parentTaskId: normalized.parentTaskId || null,
-    sortOrder: normalized.sortOrder || 0,
-  };
-};
-
-const canControlAttendance = (user, task) => {
-  if (!user) return false;
-  if (['admin', 'dispatcher'].includes(user.role)) return true;
-  return user.role === 'technician' && String(task.assignedUserId || task.assignedTo) === String(user.username);
-};
-
-const recalculateParentFromChildren = (parentTask) => {
-  const children = fallbackTasks.filter((t) => String(t.parentTaskId) === String(parentTask.id));
-  if (!children.length) return;
-
-  const normalizedChildren = children.map((c) => ensureTaskModel(c));
-  const starts = normalizedChildren.map((c) => new Date(c.plannedStart).getTime()).filter((v) => !Number.isNaN(v));
-  const ends = normalizedChildren.map((c) => new Date(c.plannedEnd).getTime()).filter((v) => !Number.isNaN(v));
-
-  if (starts.length && ends.length) {
-    parentTask.plannedStart = new Date(Math.min(...starts)).toISOString();
-    parentTask.plannedEnd = new Date(Math.max(...ends)).toISOString();
-    parentTask.startDate = toDateOnly(parentTask.plannedStart);
-    parentTask.dueDate = toDateOnly(parentTask.plannedEnd);
-  }
-
-  const avgProgress = normalizedChildren.reduce((sum, c) => sum + computeProgressFromDurations(c), 0) / normalizedChildren.length;
-  parentTask.progress = Math.round(avgProgress);
-  if (avgProgress >= 100) parentTask.status = 'completed';
-  else if (avgProgress > 0) parentTask.status = 'in_progress';
-  else parentTask.status = 'scheduled';
-};
-
-// ============ TIMELINE PLANNER API ENDPOINTS ============
-
-app.get('/api/projects/:projectId/tasks', requireAuth, async (req, res) => {
-  try {
-    const projectId = String(req.params.projectId);
-    let tasks = fallbackTasks.filter((t) => String(t.projectId) === projectId).map((t) => getEnhancedTask(t));
-
-    if (req.authUser.role === 'technician') {
-      tasks = tasks.filter((t) => String(t.assignedUserId || t.assignedTo) === String(req.authUser.username));
-    }
-
-    return res.json(tasks);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load tasks' });
-  }
+ res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+ res.setHeader('Content-Disposition', `attachment; filename="jobs-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+ return res.send(csv);
 });
 
-app.get('/api/projects/:projectId/timeline', requireAuth, async (req, res) => {
-  try {
-    const projectId = String(req.params.projectId);
-    let tasks = fallbackTasks.filter((t) => String(t.projectId) === projectId).map((t) => getEnhancedTask(t));
+app.get('/api/export/customers', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const rows = customers.map((customer) => ({
+   id: customer.id,
+   name: customer.name,
+   email: customer.email || '',
+   phone: customer.phone || '',
+   address: customer.address || '',
+   createdAt: customer.created_at || '',
+ }));
 
-    if (req.authUser.role === 'technician') {
-      tasks = tasks.filter((t) => String(t.assignedUserId || t.assignedTo) === String(req.authUser.username));
-    }
+ const csv = toCsv(rows, [
+   { key: 'id', label: 'Customer ID' },
+   { key: 'name', label: 'Name' },
+   { key: 'email', label: 'Email' },
+   { key: 'phone', label: 'Phone' },
+   { key: 'address', label: 'Address' },
+   { key: 'createdAt', label: 'Created At' },
+ ]);
 
-    const allTimes = tasks.flatMap((t) => [t.plannedStart, t.plannedEnd]).map((v) => new Date(v).getTime()).filter((v) => !Number.isNaN(v));
-    const min = allTimes.length ? new Date(Math.min(...allTimes)) : new Date();
-    const max = allTimes.length ? new Date(Math.max(...allTimes)) : new Date(Date.now() + 24 * HOUR_MS);
-    min.setHours(min.getHours() - 24, 0, 0, 0);
-    max.setHours(max.getHours() + 24, 0, 0, 0);
-
-    const timelineData = {
-      projectId,
-      timelineStart: min.toISOString(),
-      timelineEnd: max.toISOString(),
-      totalTasks: tasks.length,
-      scheduledTasks: tasks.filter((t) => t.status === 'scheduled').length,
-      inProgressTasks: tasks.filter((t) => t.status === 'in_progress').length,
-      pausedTasks: tasks.filter((t) => t.status === 'paused').length,
-      completedTasks: tasks.filter((t) => t.status === 'completed').length,
-      projectProgress: calculateProjectProgressByDuration(projectId),
-      tasks,
-    };
-
-    return res.json(timelineData);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load timeline data' });
-  }
+ res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+ res.setHeader('Content-Disposition', `attachment; filename="customers-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+ return res.send(csv);
 });
 
-app.post('/api/projects/:projectId/tasks', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const projectId = String(req.params.projectId || '').trim();
-    const name = String(req.body.name || '').trim();
-    const description = String(req.body.description || '').trim();
-    const assignedUserId = String(req.body.assignedUserId || req.body.assignedTo || '').trim();
-    const plannedStart = normalizeIsoInput(req.body.plannedStart || '');
-    const plannedEnd = normalizeIsoInput(req.body.plannedEnd || '');
-    const dependencies = Array.isArray(req.body.dependencies) ? req.body.dependencies : [];
-    const parentTaskId = req.body.parentTaskId || null;
-    const sortOrder = Number(req.body.sortOrder) || 0;
-
-    if (!name) return res.status(400).json({ error: 'Task name is required' });
-    if (!plannedStart || !plannedEnd) return res.status(400).json({ error: 'plannedStart and plannedEnd are required' });
-    if (new Date(plannedStart).getTime() >= new Date(plannedEnd).getTime()) {
-      return res.status(400).json({ error: 'plannedStart must be before plannedEnd' });
-    }
-
-    const project = fallbackProjects.find((p) => String(p.id) === projectId);
-    if (!project) return res.status(404).json({ error: 'Project not found' });
-
-    const created = ensureTaskModel({
-      id: nextTaskIdFromList(fallbackTasks),
-      projectId,
-      parentTaskId,
-      name,
-      description,
-      assignedUserId,
-      assignedTo: assignedUserId,
-      plannedStart,
-      plannedEnd,
-      actualStart: null,
-      actualEnd: null,
-      status: 'scheduled',
-      progress: 0,
-      dependencies,
-      sortOrder,
-      notes: String(req.body.notes || '').trim(),
-      createdBy: req.authUser.id,
-      updatedAt: new Date().toISOString(),
-    });
-
-    fallbackTasks.push(created);
-
-    if (project.status === 'not_started') {
-      project.status = 'active';
-      project.updatedAt = new Date().toISOString();
-    }
-
-    if (parentTaskId) {
-      const parent = fallbackTasks.find((t) => String(t.id) === String(parentTaskId));
-      if (parent) recalculateParentFromChildren(parent);
-    }
-
-    project.progress = calculateProjectProgressByDuration(projectId);
-    logActivity('task_created', `Task ${created.id} created: ${created.name}`, req.authUser.id);
-    addNotification('task', 'Task Created', `${created.id}: ${created.name}`, null);
-
-    return res.status(201).json(getEnhancedTask(created));
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to create task' });
-  }
+app.listen(PORT, () => {
+ console.log(`App 2 backend running on http://localhost:${PORT}`);
 });
-
-app.put('/api/tasks/:id', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const idx = fallbackTasks.findIndex((t) => String(t.id) === String(req.params.id));
-    if (idx === -1) return res.status(404).json({ error: 'Task not found' });
-
-    const existing = ensureTaskModel(fallbackTasks[idx]);
-    const name = req.body.name !== undefined ? String(req.body.name || '').trim() : existing.name;
-    const description = req.body.description !== undefined ? String(req.body.description || '').trim() : existing.description;
-    const assignedUserId = req.body.assignedUserId !== undefined
-      ? String(req.body.assignedUserId || '').trim()
-      : String(req.body.assignedTo !== undefined ? req.body.assignedTo : existing.assignedUserId || existing.assignedTo);
-
-    const plannedStart = req.body.plannedStart !== undefined
-      ? normalizeIsoInput(req.body.plannedStart || '')
-      : existing.plannedStart;
-    const plannedEnd = req.body.plannedEnd !== undefined
-      ? normalizeIsoInput(req.body.plannedEnd || '')
-      : existing.plannedEnd;
-
-    if (!name) return res.status(400).json({ error: 'Task name is required' });
-    if (!plannedStart || !plannedEnd) return res.status(400).json({ error: 'plannedStart and plannedEnd are required' });
-    if (new Date(plannedStart).getTime() >= new Date(plannedEnd).getTime()) {
-      return res.status(400).json({ error: 'plannedStart must be before plannedEnd' });
-    }
-
-    const nextStatus = req.body.status !== undefined
-      ? normalizeTaskStatus(req.body.status, existing.status)
-      : existing.status;
-
-    fallbackTasks[idx] = ensureTaskModel({
-      ...existing,
-      name,
-      description,
-      assignedUserId,
-      assignedTo: assignedUserId,
-      plannedStart,
-      plannedEnd,
-      status: nextStatus,
-      dependencies: req.body.dependencies !== undefined ? req.body.dependencies : existing.dependencies,
-      notes: req.body.notes !== undefined ? String(req.body.notes || '').trim() : existing.notes,
-      parentTaskId: req.body.parentTaskId !== undefined ? req.body.parentTaskId : existing.parentTaskId,
-      sortOrder: req.body.sortOrder !== undefined ? req.body.sortOrder : existing.sortOrder,
-      updatedAt: new Date().toISOString(),
-    });
-
-    if (existing.parentTaskId) {
-      const parent = fallbackTasks.find((t) => String(t.id) === String(existing.parentTaskId));
-      if (parent) recalculateParentFromChildren(parent);
-    }
-
-    const project = fallbackProjects.find((p) => String(p.id) === String(existing.projectId));
-    if (project) project.progress = calculateProjectProgressByDuration(existing.projectId);
-
-    logActivity('task_updated', `Task ${req.params.id} updated`, req.authUser.id);
-    return res.json(getEnhancedTask(fallbackTasks[idx]));
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update task' });
-  }
-});
-
-app.patch('/api/tasks/:id/dates', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const idx = fallbackTasks.findIndex((t) => String(t.id) === String(req.params.id));
-    if (idx === -1) return res.status(404).json({ error: 'Task not found' });
-
-    const existing = ensureTaskModel(fallbackTasks[idx]);
-    let plannedStart = existing.plannedStart;
-    let plannedEnd = existing.plannedEnd;
-
-    if (req.body.plannedStart !== undefined || req.body.startDate !== undefined) {
-      plannedStart = normalizeIsoInput(req.body.plannedStart || (req.body.startDate ? `${req.body.startDate}T08:00:00` : ''));
-    }
-    if (req.body.plannedEnd !== undefined || req.body.dueDate !== undefined) {
-      plannedEnd = normalizeIsoInput(req.body.plannedEnd || (req.body.dueDate ? `${req.body.dueDate}T17:00:00` : ''));
-    }
-
-    if (!plannedStart || !plannedEnd) return res.status(400).json({ error: 'plannedStart and plannedEnd are required' });
-    if (new Date(plannedStart).getTime() >= new Date(plannedEnd).getTime()) {
-      return res.status(400).json({ error: 'plannedStart must be before plannedEnd' });
-    }
-
-    fallbackTasks[idx] = ensureTaskModel({
-      ...existing,
-      plannedStart,
-      plannedEnd,
-      updatedAt: new Date().toISOString(),
-    });
-
-    logActivity('task_dates_updated', `Task ${req.params.id} dates updated`, req.authUser.id);
-    return res.json(getEnhancedTask(fallbackTasks[idx]));
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update dates' });
-  }
-});
-
-app.patch('/api/tasks/:id/progress', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const idx = fallbackTasks.findIndex((t) => String(t.id) === String(req.params.id));
-    if (idx === -1) return res.status(404).json({ error: 'Task not found' });
-
-    const existing = ensureTaskModel(fallbackTasks[idx]);
-    const progress = req.body.progress !== undefined ? Number(req.body.progress) : existing.progress;
-    if (Number.isNaN(progress) || progress < 0 || progress > 100) {
-      return res.status(400).json({ error: 'Progress must be between 0 and 100' });
-    }
-
-    let status = 'scheduled';
-    if (progress >= 100) status = 'completed';
-    else if (progress > 0) status = 'in_progress';
-
-    fallbackTasks[idx] = ensureTaskModel({
-      ...existing,
-      status,
-      actualStart: progress > 0 && !existing.actualStart ? new Date().toISOString() : existing.actualStart,
-      actualEnd: progress >= 100 ? (existing.actualEnd || new Date().toISOString()) : null,
-      progress,
-      updatedAt: new Date().toISOString(),
-    });
-
-    logActivity('task_progress_updated', `Task ${req.params.id} progress set to ${progress}%`, req.authUser.id);
-    return res.json(getEnhancedTask(fallbackTasks[idx]));
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update progress' });
-  }
-});
-
-const updateAttendanceState = (task, nextAction) => {
-  const nowIso = new Date().toISOString();
-  const next = { ...ensureTaskModel(task) };
-
-  if (nextAction === 'start') {
-    if (!next.actualStart) next.actualStart = nowIso;
-    next.actualEnd = null;
-    next.status = 'in_progress';
-  }
-
-  if (nextAction === 'pause') {
-    next.status = 'paused';
-  }
-
-  if (nextAction === 'resume') {
-    if (!next.actualStart) next.actualStart = nowIso;
-    next.status = 'in_progress';
-  }
-
-  if (nextAction === 'finish') {
-    if (!next.actualStart) next.actualStart = nowIso;
-    next.actualEnd = nowIso;
-    next.status = 'completed';
-  }
-
-  if (next.actualStart && new Date(next.actualStart).getTime() < new Date(next.plannedStart).getTime()) {
-    next.attendanceWarning = 'actualStart is earlier than plannedStart';
-  }
-
-  next.updatedAt = nowIso;
-  return ensureTaskModel(next);
-};
-
-const attendanceEndpoint = (action) => async (req, res) => {
-  try {
-    const idx = fallbackTasks.findIndex((t) => String(t.id) === String(req.params.id));
-    if (idx === -1) return res.status(404).json({ error: 'Task not found' });
-
-    const existing = ensureTaskModel(fallbackTasks[idx]);
-    if (!canControlAttendance(req.authUser, existing)) {
-      return res.status(403).json({ error: 'Only assigned technician or admin/dispatcher can update attendance' });
-    }
-
-    if (action === 'start' && existing.status !== 'scheduled') {
-      return res.status(400).json({ error: 'Only scheduled tasks can be started' });
-    }
-    if (action === 'pause' && existing.status !== 'in_progress') {
-      return res.status(400).json({ error: 'Only in-progress tasks can be paused' });
-    }
-    if (action === 'resume' && existing.status !== 'paused') {
-      return res.status(400).json({ error: 'Only paused tasks can be resumed' });
-    }
-    if (action === 'finish' && !['in_progress', 'paused'].includes(existing.status)) {
-      return res.status(400).json({ error: 'Only in-progress or paused tasks can be finished' });
-    }
-
-    fallbackTasks[idx] = updateAttendanceState(existing, action);
-    const updated = getEnhancedTask(fallbackTasks[idx]);
-
-    const project = fallbackProjects.find((p) => String(p.id) === String(updated.projectId));
-    if (project) project.progress = calculateProjectProgressByDuration(updated.projectId);
-
-    logActivity(`task_${action}`, `Task ${updated.id} ${action}ed`, req.authUser.id);
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to update attendance' });
-  }
-};
-
-app.post('/api/tasks/:id/start', requireAuth, attendanceEndpoint('start'));
-app.post('/api/tasks/:id/pause', requireAuth, attendanceEndpoint('pause'));
-app.post('/api/tasks/:id/resume', requireAuth, attendanceEndpoint('resume'));
-app.post('/api/tasks/:id/finish', requireAuth, attendanceEndpoint('finish'));
-
-app.delete('/api/tasks/:id', requireAuth, async (req, res) => {
-  if (req.authUser.role === 'client') {
-    return res.status(403).json({ error: 'Clients cannot delete tasks' });
-  }
-
-  try {
-    const idx = fallbackTasks.findIndex((t) => String(t.id) === String(req.params.id));
-    if (idx === -1) return res.status(404).json({ error: 'Task not found' });
-
-    const task = fallbackTasks[idx];
-    const projectId = task.projectId;
-
-    fallbackTasks.forEach((t, i) => {
-      if (String(t.parentTaskId) === String(task.id)) {
-        fallbackTasks[i].parentTaskId = null;
-      }
-    });
-
-    fallbackTasks.splice(idx, 1);
-
-    const project = fallbackProjects.find((p) => p.id === projectId);
-    if (project) project.progress = calculateProjectProgressByDuration(projectId);
-
-    logActivity('task_deleted', `Task ${req.params.id} deleted`, req.authUser.id);
-    return res.json({ ok: true });
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to delete task' });
-  }
-});
-
-app.get('/api/tasks/:id/activity', requireAuth, async (req, res) => {
-  try {
-    const taskLogs = fallbackActivityLogs.filter((log) =>
-      log.description && log.description.includes(req.params.id)
-    );
-    return res.json(taskLogs);
-  } catch (error) {
-    return res.status(500).json({ error: 'Failed to load task activity' });
-  }
-});
-// ============ PLANNING / Gantt ============
-
-app.get('/api/planning/gantt', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const projects = fallbackProjects.map(project => ({
-      ...project,
-      progress: calculateProjectProgress(project.id),
-      tasks: fallbackTasks.filter(t => String(t.projectId) === project.id),
-    }));
-    return res.json(projects);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to load planning data' });
-  }
-});
-
-// ============ PROJECT EXPORT ============
-
-app.get('/api/export/projects', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const headers = ['ID', 'Title', 'Description', 'Status', 'Priority', 'Progress', 'Start Date', 'Deadline', 'Created By'];
-    const rows = fallbackProjects.map(project => [
-      project.id,
-      `"${project.title}"`,
-      `"${(project.description || '').replace(/"/g, '""')}"`,
-      project.status,
-      project.priority,
-      calculateProjectProgress(project.id) + '%',
-      project.startDate || '',
-      project.targetDeadline || '',
-      project.createdBy || '',
-    ].join(','));
-    
-    const csv = [headers.join(','), ...rows].join('\n');
-    
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=projects-export-${new Date().toISOString().split('T')[0]}.csv`);
-    return res.send(csv);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to export projects' });
-  }
-});
-
-app.get('/api/export/tasks', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
-  try {
-    const projectId = req.query.projectId;
-    let tasks = fallbackTasks;
-    if (projectId) {
-      tasks = tasks.filter(t => String(t.projectId) === String(projectId));
-    }
-    
-    const headers = ['ID', 'Project ID', 'Name', 'Description', 'Status', 'Progress', 'Assigned To', 'Start Date', 'Due Date', 'Dependencies', 'Notes'];
-    const rows = tasks.map(task => [
-      task.id,
-      task.projectId,
-      `"${task.name}"`,
-      `"${(task.description || '').replace(/"/g, '""')}"`,
-      task.status,
-      task.progress + '%',
-      task.assignedTo || '',
-      task.startDate || '',
-      task.dueDate || '',
-      (task.dependencies || []).join(';'),
-      `"${(task.notes || '').replace(/"/g, '""')}"`,
-    ].join(','));
-    
-    const csv = [headers.join(','), ...rows].join('\n');
-    
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename=tasks-export-${new Date().toISOString().split('T')[0]}.csv`);
-    return res.send(csv);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to export tasks' });
-  }
-});
-
-// ============ START SERVER ============
-
-const start = async () => {
-  await initDb();
-  
-  app.listen(PORT, () => {
-    const mode = useDb() ? 'MongoDB' : 'fallback in-memory';
-    console.log(`App 2 backend running on http://localhost:${PORT} (${mode})`);
-    console.log(`\n🔌 Real-time: Socket.io enabled for live updates`);
-    console.log(`\n📋 API Endpoints:`);
-    console.log(`  Jobs: GET/POST /api/jobs, PUT /api/jobs/:id, PATCH /api/jobs/:id/status`);
-    console.log(`  Jobs: POST /api/jobs/:id/checkin, /checkout`);
-    console.log(`  Jobs: POST /api/jobs/:id/photos`);
-    console.log(`  Customers: GET/POST /api/customers, PUT/DELETE /api/customers/:id`);
-    console.log(`  Invoices: GET/POST /api/invoices, PATCH /api/invoices/:id/status`);
-    console.log(`  Invoices: GET /api/invoices/:id/pdf (download invoice)`);
-    console.log(`  Schedule: GET /api/schedule`);
-    console.log(`  Export: GET /api/export/jobs, GET /api/export/customers, GET /api/export/projects`);
-    console.log(`  Notifications: GET /api/notifications`);
-    console.log(`  Projects: GET/POST /api/projects, PUT/DELETE /api/projects/:id`);
-    console.log(`  Tasks: GET/POST /api/projects/:id/tasks, PUT/DELETE /api/tasks/:id`);
-    console.log(`  Activity: GET /api/activity`);
-    console.log(`  Client Portal: POST /api/client/login, GET /api/client/jobs, GET /api/client/invoices`);
-    console.log(`\n✨ Advanced Features:`);
-    console.log(`  - Email notifications (simulated)`);
-    console.log(`  - PDF invoice generation`);
-    console.log(`  - Client portal`);
-    console.log(`  - Real-time Socket.io updates`);
-  });
-};
-
-start();
-
