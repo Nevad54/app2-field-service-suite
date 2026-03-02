@@ -1,5 +1,5 @@
 // ============== PROJECT PLANNER - EXCEL-STYLE TIMELINE SCHEDULER ==============
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import './ProjectPlanner.css';
 
@@ -21,6 +21,28 @@ async function apiFetch(path, { token, method = 'GET', body } = {}) {
   }
   return data;
 }
+
+const TIMELINE_CENTER_STORAGE_KEY = 'app2_planner_timeline_center';
+
+const loadStoredTimelineCenter = () => {
+  try {
+    const raw = localStorage.getItem(TIMELINE_CENTER_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.scale || !parsed.date) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+};
+
+const storeTimelineCenter = (payload) => {
+  try {
+    localStorage.setItem(TIMELINE_CENTER_STORAGE_KEY, JSON.stringify(payload));
+  } catch (e) {
+    // ignore storage failures
+  }
+};
 
 // ============== HELPER FUNCTIONS ==============
 const calculateDuration = (startDate, endDate) => {
@@ -46,11 +68,6 @@ const calculateStatus = (progress, endDate) => {
   return 'in_progress';
 };
 
-const calculateContribution = (progress, weight) => {
-  if (!weight || !progress) return 0;
-  return (progress * weight) / 100;
-};
-
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -62,7 +79,14 @@ const formatShortDate = (dateStr) => {
   const date = new Date(dateStr);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
-const toIsoDate = (date) => date.toISOString().split('T')[0];
+const toIsoDate = (date) => {
+  // Create a timezone-safe date string
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 const addDays = (date, days) => {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
@@ -155,6 +179,76 @@ export default function ProjectPlanner({ token }) {
   const [editingCell, setEditingCell] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'sort_order', direction: 'asc' });
   const [showActivities, setShowActivities] = useState(false);
+  const [calendarCursor, setCalendarCursor] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  
+  // Timeline View Enhancements
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [hoveredTask, setHoveredTask] = useState(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const [editingTimelineTask, setEditingTimelineTask] = useState(null);
+  const [timelineScrollPosition, setTimelineScrollPosition] = useState(0);
+  const [minimapViewport, setMinimapViewport] = useState({ start: 0, end: 100 });
+  const [timelineRef, setTimelineRef] = useState(null);
+  const [todayPosition, setTodayPosition] = useState(null);
+  const timelineScrollRef = useRef(null);
+  const lastTimelineExtendAtRef = useRef(0);
+  const [shouldScrollToToday, setShouldScrollToToday] = useState(false);
+  const pendingScrollToCenterRef = useRef(false);
+  const centerDateRef = useRef(null);
+  const persistCenterTimerRef = useRef(null);
+  const [timelineWindow, setTimelineWindow] = useState(null);
+
+  // Scroll to today functionality
+  const scrollToToday = () => {
+    const timelineContainer = timelineScrollRef.current;
+    if (!timelineContainer || todayPosition === null) return;
+    const containerWidth = timelineContainer.clientWidth;
+    const scrollPosition = todayPosition - (containerWidth / 2);
+    timelineContainer.scrollTo({ left: scrollPosition, behavior: 'smooth' });
+  };
+
+  const initializeTimelineWindowAroundToday = useCallback(() => {
+    const baseDate = new Date();
+    baseDate.setHours(0, 0, 0, 0);
+
+    centerDateRef.current = {
+      scale: timelineScale,
+      date: toIsoDate(baseDate),
+    };
+
+    if (timelineScale === 'hour') return;
+
+    if (timelineScale === 'week') {
+      const weekStart = addDays(baseDate, -baseDate.getDay());
+      setTimelineWindow({
+        start: addDays(weekStart, -7 * 8),
+        end: addDays(weekStart, 7 * 18),
+      });
+      return;
+    }
+
+    setTimelineWindow({
+      start: addDays(baseDate, -30),
+      end: addDays(baseDate, 60),
+    });
+  }, [timelineScale]);
+
+  useEffect(() => {
+    if (viewMode !== 'timeline') return;
+    // Always reinitialize around today when entering timeline or changing scale
+    initializeTimelineWindowAroundToday();
+    // Defer setting shouldScrollToToday to ensure timelineColumns updates first
+    const timeout = setTimeout(() => setShouldScrollToToday(true), 0);
+    return () => clearTimeout(timeout);
+  }, [viewMode, timelineScale]);
+
+  // Zoom handlers
+  const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.25, 2));
+  const handleZoomOut = () => setZoomLevel(prev => Math.max(prev - 0.25, 0.5));
+  const handleZoomReset = () => setZoomLevel(1);
 
   const formatActivityTaskName = (activity) => `${activity.name} - ${activity.trade}`;
   const normalizeActivityKey = (name) =>
@@ -185,6 +279,28 @@ export default function ProjectPlanner({ token }) {
       setHourlyFocusDate(base);
     }
   }, [selectedProject, tasks, hourlyFocusDate]);
+
+  useEffect(() => {
+    if (timelineScale !== 'hour') return;
+    if (hourlyFocusDate) return;
+    setHourlyFocusDate(toIsoDate(new Date()));
+  }, [timelineScale, hourlyFocusDate]);
+
+  useEffect(() => {
+    if (timelineScale !== 'hour') return;
+    const stored = loadStoredTimelineCenter();
+    if (stored && stored.scale === 'hour' && stored.date) {
+      setHourlyFocusDate(stored.date);
+      return;
+    }
+    setHourlyFocusDate(toIsoDate(new Date()));
+  }, [timelineScale]);
+
+  const shiftHourlyFocusDate = (deltaDays) => {
+    const base = hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
+    const next = addDays(base, deltaDays);
+    setHourlyFocusDate(toIsoDate(next));
+  };
 
   const loadProjects = async () => {
     try {
@@ -335,8 +451,8 @@ export default function ProjectPlanner({ token }) {
           project_id: selectedProject.id,
           parent_task_id: parentId,
           name: 'New Task',
-          start_date: new Date().toISOString().split('T')[0],
-          end_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          start_date: toIsoDate(new Date()),
+          end_date: toIsoDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)),
           progress_percent: 0,
           weight: 1
         }
@@ -587,6 +703,7 @@ export default function ProjectPlanner({ token }) {
 
   // Timeline calculations
   const timelineRange = useMemo(() => {
+    if (timelineWindow) return timelineWindow;
     if (!tasks.length) {
       const today = new Date();
       return {
@@ -594,10 +711,10 @@ export default function ProjectPlanner({ token }) {
         end: new Date(today.getFullYear(), today.getMonth() + 2, 0)
       };
     }
-    
+
     let minDate = null;
     let maxDate = null;
-    
+
     tasks.forEach(task => {
       if (task.start_date) {
         const start = new Date(task.start_date);
@@ -608,27 +725,36 @@ export default function ProjectPlanner({ token }) {
         if (!maxDate || end > maxDate) maxDate = new Date(end);
       }
     });
-    
-    // Default if no dates found
+
     if (!minDate) minDate = new Date();
     if (!maxDate) maxDate = new Date();
-    
-    // Add padding (1 week before, 2 weeks after)
-    minDate = new Date(minDate.getTime() - 7 * 24 * 60 * 60 * 1000);
-    maxDate = new Date(maxDate.getTime() + 14 * 24 * 60 * 60 * 1000);
-    
+
+    minDate = new Date(minDate.getTime() - 30 * 24 * 60 * 60 * 1000);
+    maxDate = new Date(maxDate.getTime() + 60 * 24 * 60 * 60 * 1000);
+
     return { start: minDate, end: maxDate };
-  }, [tasks]);
+  }, [tasks, timelineWindow]);
+
+  useEffect(() => {
+    if (timelineWindow) return;
+    if (!tasks.length) return;
+    setTimelineWindow(timelineRange);
+  }, [tasks, timelineRange, timelineWindow]);
 
   const timelineColumns = useMemo(() => {
     const slots = [];
+    if (!timelineRange) return slots;
+    
     const rangeStart = new Date(timelineRange.start);
     const rangeEnd = new Date(timelineRange.end);
 
     if (timelineScale === 'hour') {
+      // Show a week (7 days) of hourly view for broader scope
       const focus = hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
-      const start = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate(), 0, 0, 0, 0);
-      for (let h = 0; h < 24; h += 1) {
+      // Start from 3 days before the focus date to show past, present, and future
+      const start = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate() - 7, 0, 0, 0, 0);
+      // Show 14 days (336 hours) - consistent with daily showing 90 days
+      for (let h = 0; h < 336; h += 1) {
         const slotStart = new Date(start.getTime() + h * 60 * 60 * 1000);
         const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
         slots.push({ start: slotStart, end: slotEnd });
@@ -637,18 +763,218 @@ export default function ProjectPlanner({ token }) {
     }
 
     const stepDays = timelineScale === 'week' ? 7 : 1;
-    const maxSlots = timelineScale === 'week' ? 20 : 30;
     let current = new Date(rangeStart);
-    let count = 0;
-    while (current <= rangeEnd && count < maxSlots) {
+    while (current <= rangeEnd) {
       const slotStart = new Date(current);
       const slotEnd = addDays(slotStart, stepDays);
       slots.push({ start: slotStart, end: slotEnd });
       current = slotEnd;
-      count += 1;
     }
     return slots;
   }, [timelineRange, timelineScale, hourlyFocusDate]);
+
+  const handleTimelineScroll = useCallback((e) => {
+    const el = e.currentTarget;
+    setTimelineScrollPosition(el.scrollLeft);
+
+    // Persist the centered column/date (debounced)
+    if (persistCenterTimerRef.current) {
+      window.clearTimeout(persistCenterTimerRef.current);
+    }
+
+    persistCenterTimerRef.current = window.setTimeout(() => {
+      if (!timelineColumns || timelineColumns.length === 0) return;
+      const colWidth = timelineColWidthPx || 90;
+      const centerPx = el.scrollLeft + (el.clientWidth / 2);
+      const idx = Math.max(0, Math.min(timelineColumns.length - 1, Math.floor(centerPx / colWidth)));
+      const colDate = timelineColumns[idx]?.start;
+      if (!colDate) return;
+      storeTimelineCenter({
+        scale: timelineScale,
+        date: toIsoDate(colDate),
+      });
+    }, 250);
+
+    if (!timelineWindow) return;
+    if (timelineScale === 'hour') return;
+
+    const now = Date.now();
+    if (now - lastTimelineExtendAtRef.current < 900) return;
+
+    const thresholdPx = 24;
+    const atLeft = el.scrollLeft < thresholdPx;
+    const atRight = (el.scrollLeft + el.clientWidth) > (el.scrollWidth - thresholdPx);
+    if (!atLeft && !atRight) return;
+
+    const extendDays = timelineScale === 'week' ? 56 : 60;
+    const colWidth = 90 * zoomLevel;
+    const colsToShift = timelineScale === 'week' ? Math.ceil(extendDays / 7) : extendDays;
+    const pxShift = colsToShift * colWidth;
+
+    if (atLeft) {
+      lastTimelineExtendAtRef.current = now;
+      const newStart = addDays(timelineWindow.start, -extendDays);
+      setTimelineWindow(prev => ({ ...prev, start: newStart }));
+      requestAnimationFrame(() => {
+        el.scrollLeft = el.scrollLeft + pxShift;
+      });
+    }
+
+    if (atRight) {
+      lastTimelineExtendAtRef.current = now;
+      const newEnd = addDays(timelineWindow.end, extendDays);
+      setTimelineWindow(prev => ({ ...prev, end: newEnd }));
+    }
+  }, [timelineWindow, timelineScale, zoomLevel]);
+
+  const timelineColWidthPx = useMemo(() => {
+    const base = timelineScale === 'hour' ? 64 : 90;
+    return Math.round(base * zoomLevel);
+  }, [timelineScale, zoomLevel]);
+
+  const timelineHeaderTotalHeightPx = useMemo(() => 60, []);
+
+  const timelineAnchorDate = useMemo(() => {
+    if (!timelineColumns || timelineColumns.length === 0) return null;
+    if (timelineScale === 'hour') {
+      return hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
+    }
+    const colWidth = timelineColWidthPx || 90;
+    // Use center of viewport, not left edge
+    const scrollContainer = timelineScrollRef.current;
+    const effectiveScrollLeft = scrollContainer ? scrollContainer.scrollLeft : (timelineScrollPosition || 0);
+    const viewportCenter = effectiveScrollLeft + (scrollContainer?.clientWidth || 800) / 2;
+    const idx = Math.max(0, Math.min(timelineColumns.length - 1, Math.floor(viewportCenter / colWidth)));
+    return timelineColumns[idx]?.start || null;
+  }, [timelineColumns, timelineScale, hourlyFocusDate, timelineColWidthPx, timelineScrollPosition]);
+
+  const timelineHeaderLabel = useMemo(() => {
+    if (!timelineAnchorDate) return '';
+    if (timelineScale === 'day') {
+      return timelineAnchorDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+    if (timelineScale === 'week') {
+      return timelineAnchorDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+    if (timelineScale === 'hour') {
+      return timelineAnchorDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    }
+    return '';
+  }, [timelineAnchorDate, timelineScale]);
+
+  // Calculate today marker (pixel-based so it stays correct with fixed-width columns)
+  useEffect(() => {
+    if (timelineColumns && timelineColumns.length > 0 && timelineRange) {
+      const today = new Date();
+      const colWidth = timelineColWidthPx || 90;
+
+      if (timelineScale === 'hour') {
+        const focus = hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
+        const sameDay = focus.toDateString() === today.toDateString();
+        if (!sameDay) {
+          setTodayPosition(null);
+          return;
+        }
+        const minutes = today.getHours() * 60 + today.getMinutes();
+        const leftPx = (minutes / (24 * 60)) * (24 * colWidth);
+        setTodayPosition(leftPx + (colWidth / 2));
+        return;
+      }
+
+      const stepMs = timelineScale === 'week' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const rangeStartMs = new Date(timelineColumns[0].start).getTime();
+      const idx = Math.floor((today.getTime() - rangeStartMs) / stepMs);
+      if (idx < 0 || idx > timelineColumns.length) {
+        setTodayPosition(null);
+        return;
+      }
+      setTodayPosition(idx * colWidth + (colWidth / 2));
+    } else {
+      setTodayPosition(null);
+    }
+  }, [timelineColumns, timelineRange, timelineScale, hourlyFocusDate, timelineColWidthPx]);
+
+  // Auto-scroll to today when entering Timeline or changing scale (after columns are ready)
+  useEffect(() => {
+    if (viewMode !== 'timeline') return;
+    if (!shouldScrollToToday) return;
+    const el = timelineScrollRef.current;
+    if (!el) return;
+    if (!timelineColumns || timelineColumns.length === 0) return;
+
+    const today = new Date();
+    const colWidth = timelineColWidthPx || 90;
+
+    let scrollLeft;
+    if (timelineScale === 'hour') {
+      // For hourly view, scroll to current hour centered in the viewport
+      const focus = hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
+      const dayStart = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate(), 0, 0, 0, 0).getTime();
+      
+      // Calculate position based on current time of day
+      const currentHour = today.getHours();
+      const currentMinute = today.getMinutes();
+      const hourWidth = colWidth;
+      
+      // Position based on time (each hour = colWidth pixels)
+      const leftPx = (currentHour * hourWidth) + (currentMinute / 60) * hourWidth;
+      scrollLeft = leftPx - (el.clientWidth / 2);
+    } else {
+      // For week/day view, scroll to today centered
+      const stepMs = timelineScale === 'week' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const rangeStartMs = new Date(timelineColumns[0].start).getTime();
+      const idx = Math.floor((today.getTime() - rangeStartMs) / stepMs);
+    
+      if (idx < 0 || idx >= timelineColumns.length) {
+        setShouldScrollToToday(false);
+        return;
+      }
+
+      const leftPx = idx * colWidth + (colWidth / 2);
+      scrollLeft = leftPx - (el.clientWidth / 2);
+    }
+    
+    const handle = window.requestAnimationFrame(() => {
+      el.scrollTo({ left: scrollLeft, behavior: 'auto' });
+      setShouldScrollToToday(false);
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [viewMode, timelineColumns, timelineScale, timelineColWidthPx, shouldScrollToToday, hourlyFocusDate]);
+
+  useEffect(() => {
+    if (viewMode !== 'timeline') return;
+    if (!pendingScrollToCenterRef.current) return;
+    const el = timelineScrollRef.current;
+    if (!el) return;
+    if (!timelineColumns || timelineColumns.length === 0) return;
+
+    const stored = loadStoredTimelineCenter();
+    const targetIso = stored?.date || centerDateRef.current?.date;
+    if (!targetIso) {
+      pendingScrollToCenterRef.current = false;
+      return;
+    }
+
+    const target = new Date(targetIso);
+    target.setHours(0, 0, 0, 0);
+
+    const colWidth = timelineColWidthPx || 90;
+    const stepMs = timelineScale === 'week' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    const rangeStartMs = new Date(timelineColumns[0].start).getTime();
+    const idx = Math.floor((target.getTime() - rangeStartMs) / stepMs);
+    if (idx < 0 || idx > timelineColumns.length) {
+      pendingScrollToCenterRef.current = false;
+      return;
+    }
+
+    const leftPx = idx * colWidth + (colWidth / 2);
+    const scrollLeft = leftPx - (el.clientWidth / 2);
+    const raf = window.requestAnimationFrame(() => {
+      el.scrollTo({ left: scrollLeft, behavior: 'auto' });
+      pendingScrollToCenterRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [viewMode, timelineScale, timelineColumns, timelineColWidthPx]);
 
   const timelineRows = useMemo(() => {
     const parents = sortedTasks.filter((t) => !t.parent_task_id);
@@ -667,6 +993,7 @@ export default function ProjectPlanner({ token }) {
 
   const getTaskPosition = (task, rowIndex = 0) => {
     if (!task.start_date || !task.end_date) return null;
+    if (!timelineColumns || timelineColumns.length === 0) return null;
 
     const start = new Date(task.start_date);
     const end = new Date(task.end_date);
@@ -680,40 +1007,47 @@ export default function ProjectPlanner({ token }) {
     const endMs = end.getTime() + 24 * 60 * 60 * 1000;
 
     if (timelineScale === 'hour') {
+      const colWidth = timelineColWidthPx || 64;
       const focus = hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
-      const dayStart = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate(), 0, 0, 0, 0).getTime();
-      const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+      // Start from 3 days before the focus date (matching the 7-day view)
+      const viewStart = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate() - 3, 0, 0, 0, 0).getTime();
+      const viewEnd = viewStart + 336 * 60 * 60 * 1000; // 14 days = 336 hours
 
-      // If the task overlaps focus day, render a practical work window so hourly view stays populated and readable.
-      if (endMs <= dayStart || startMs >= dayEnd) return null;
-      const overlapStart = Math.max(startMs, dayStart);
-      const overlapEnd = Math.min(endMs, dayEnd);
-      const overlapHours = Math.max(1, (overlapEnd - overlapStart) / (60 * 60 * 1000));
-      const baseHour = 6 + ((rowIndex * 2) % 10); // 6:00 -> 24:00 stagger
-      const blockHours = Math.max(2, Math.min(10, Math.round(overlapHours)));
-      const visStart = dayStart + baseHour * 60 * 60 * 1000;
-      const visEnd = Math.min(dayEnd, visStart + blockHours * 60 * 60 * 1000);
-      const left = ((visStart - dayStart) / (dayEnd - dayStart)) * 100;
-      const width = Math.max(2, ((visEnd - visStart) / (dayEnd - dayStart)) * 100);
-      return { left, width };
+      // If the task is outside the visible 7-day range, don't show it
+      if (endMs <= viewStart || startMs >= viewEnd) return null;
+      
+      // Calculate actual overlap with the visible range
+      const overlapStart = Math.max(startMs, viewStart);
+      const overlapEnd = Math.min(endMs, viewEnd);
+      const overlapDurationMs = overlapEnd - overlapStart;
+      
+      // Calculate position based on task start time relative to view start
+      const taskStartOffset = startMs - viewStart;
+      
+      // Use fixed pixel widths per hour for consistency
+      const hourWidth = colWidth;
+      const left = (taskStartOffset / (24 * 60 * 60 * 1000)) * (24 * hourWidth);
+      const width = Math.max(hourWidth / 2, (overlapDurationMs / (24 * 60 * 60 * 1000)) * (24 * hourWidth));
+      
+      return { left, width, unit: 'px' };
     }
 
-    let left = ((startMs - rangeStart) / totalRange) * 100;
-    let width = ((endMs - startMs) / totalRange) * 100;
+    const totalWidthPx = timelineColumns.length * (timelineColWidthPx || 90);
+    let left = ((startMs - rangeStart) / totalRange) * totalWidthPx;
+    let width = ((endMs - startMs) / totalRange) * totalWidthPx;
 
-    // Clamp values
-    left = Math.max(-10, Math.min(110, left));
-    width = Math.max(2, Math.min(120, width));
+    left = Math.max(-40, Math.min(totalWidthPx + 40, left));
+    width = Math.max(8, Math.min(totalWidthPx + 80, width));
 
-    return { left, width };
+    return { left, width, unit: 'px' };
   };
 
 
   // Render calendar view
   const renderCalendarView = () => {
     const today = new Date();
-    const currentMonth = today.getMonth();
-    const currentYear = today.getFullYear();
+    const currentMonth = calendarCursor.getMonth();
+    const currentYear = calendarCursor.getFullYear();
     
     const firstDay = getFirstDayOfMonth(currentYear, currentMonth);
     const daysInMonth = getDaysInMonth(currentYear, currentMonth);
@@ -724,7 +1058,7 @@ export default function ProjectPlanner({ token }) {
     }
     for (let i = 1; i <= daysInMonth; i++) {
       const date = new Date(currentYear, currentMonth, i);
-      const dateStr = date.toISOString().split('T')[0];
+      const dateStr = toIsoDate(date);
       const dayTasks = tasks.filter(t => {
         if (!t.start_date || !t.end_date) return false;
         return dateStr >= t.start_date && dateStr <= t.end_date;
@@ -735,7 +1069,23 @@ export default function ProjectPlanner({ token }) {
     return (
       <div className="calendar-view">
         <div className="calendar-header">
-          <h3>{today.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h3>
+          <button
+            type="button"
+            className="calendar-nav-btn"
+            onClick={() => setCalendarCursor(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+            aria-label="Previous month"
+          >
+            ‹
+          </button>
+          <h3>{calendarCursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h3>
+          <button
+            type="button"
+            className="calendar-nav-btn"
+            onClick={() => setCalendarCursor(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+            aria-label="Next month"
+          >
+            ›
+          </button>
         </div>
         <div className="calendar-grid">
           <div className="calendar-day-headers">
@@ -830,41 +1180,52 @@ export default function ProjectPlanner({ token }) {
         )}
         
         <div className="planner-actions">
-          <div className="view-toggle">
-            <button 
-              className={viewMode === 'table' ? 'active' : ''} 
-              onClick={() => setViewMode('table')}
-            >
-              📋 Table
-            </button>
-            <button 
-              className={viewMode === 'timeline' ? 'active' : ''} 
-              onClick={() => setViewMode('timeline')}
-            >
-              📊 Timeline
-            </button>
-            <button 
-              className={viewMode === 'calendar' ? 'active' : ''} 
-              onClick={() => setViewMode('calendar')}
-            >
-              📅 Calendar
-            </button>
+          <div className="planner-actions-left">
+            <div className="view-toggle">
+              <button 
+                className={viewMode === 'table' ? 'active' : ''} 
+                onClick={() => setViewMode('table')}
+                title="Table View"
+              >
+                <span>📋</span> Table
+              </button>
+              <button 
+                className={viewMode === 'timeline' ? 'active' : ''} 
+                onClick={() => setViewMode('timeline')}
+                title="Timeline View"
+              >
+                <span>📊</span> Timeline
+              </button>
+              <button 
+                className={viewMode === 'calendar' ? 'active' : ''} 
+                onClick={() => setViewMode('calendar')}
+                title="Calendar View"
+              >
+                <span>📅</span> Calendar
+              </button>
+            </div>
           </div>
-          <button className="btn-add" onClick={() => addTask(null)} disabled={plannerActionBusy}>
-            + Add Task
-          </button>
-          <button className="btn-secondary" onClick={() => setShowActivities((prev) => !prev)}>
-            {showActivities ? 'Hide Activities' : 'Show Activities'}
-          </button>
-          <button className="btn-secondary" onClick={addStandardPhaseTemplate} disabled={plannerActionBusy}>
-            + Add Standard Template
-          </button>
-          <button className="btn-secondary" onClick={populateActivitiesForExistingPhases} disabled={plannerActionBusy}>
-            + Populate Activities
-          </button>
-          <button className="btn-secondary" onClick={cleanDuplicateActivities} disabled={plannerActionBusy}>
-            + Clean Duplicates
-          </button>
+          <div className="planner-actions-right">
+            <button className="btn-add" onClick={() => addTask(null)} disabled={plannerActionBusy} title="Add New Task">
+              <span>+</span> Add Task
+            </button>
+            {viewMode === 'table' && (
+              <>
+                <button className="btn-secondary" onClick={() => setShowActivities((prev) => !prev)} title="Toggle Sub-tasks">
+                  {showActivities ? 'Hide Activities' : 'Show Activities'}
+                </button>
+                <button className="btn-secondary" onClick={addStandardPhaseTemplate} disabled={plannerActionBusy} title="Add Standard Template">
+                  + Template
+                </button>
+                <button className="btn-secondary" onClick={populateActivitiesForExistingPhases} disabled={plannerActionBusy} title="Populate Activities">
+                  + Activities
+                </button>
+                <button className="btn-secondary" onClick={cleanDuplicateActivities} disabled={plannerActionBusy} title="Clean Duplicates">
+                  Clean
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -884,26 +1245,17 @@ export default function ProjectPlanner({ token }) {
                     <th className="col-task" onClick={() => handleSort('name')}>
                       Task / Phase Name <SortIndicator columnKey="name" />
                     </th>
-                    <th className="col-assignee">Assignee</th>
                     <th className="col-date" onClick={() => handleSort('start_date')}>
-                      Start Date <SortIndicator columnKey="start_date" />
+                      Start <SortIndicator columnKey="start_date" />
                     </th>
                     <th className="col-date" onClick={() => handleSort('end_date')}>
-                      End Date <SortIndicator columnKey="end_date" />
+                      End <SortIndicator columnKey="end_date" />
                     </th>
-                    <th className="col-duration">Duration</th>
-                    <th className="col-weight" onClick={() => handleSort('weight')}>
-                      Weight <SortIndicator columnKey="weight" />
-                    </th>
-                    <th className="col-progress">Progress %</th>
-                    <th className="col-contribution">Contribution</th>
-                    <th className="col-cost">Est. Cost</th>
-                    <th className="col-cost">Actual Cost</th>
+                    <th className="col-duration">Days</th>
+                    <th className="col-progress">Progress</th>
                     <th className="col-status" onClick={() => handleSort('status')}>
                       Status <SortIndicator columnKey="status" />
                     </th>
-                    <th className="col-milestone">Milestone</th>
-                    <th className="col-notes">Notes</th>
                     <th className="col-actions">Actions</th>
                   </tr>
                 </thead>
@@ -918,7 +1270,8 @@ export default function ProjectPlanner({ token }) {
                             type="text"
                             value={task.name}
                             onChange={(e) => updateTask(task.id, { name: e.target.value })}
-                            className="cell-input"
+                            className="cell-input task-name-input"
+                            title={task.name}
                           />
                         </td>
                         <td className="col-date" data-label="Start Date">
@@ -937,16 +1290,8 @@ export default function ProjectPlanner({ token }) {
                             className="cell-input date-input"
                           />
                         </td>
-                        <td className="col-duration" data-label="Duration">{task.duration_days || calculateDuration(task.start_date, task.end_date)} days</td>
-                        <td className="col-weight" data-label="Weight">
-                          <input
-                            type="number"
-                            min="1"
-                            max="100"
-                            value={task.weight || 1}
-                            onChange={(e) => updateTask(task.id, { weight: parseInt(e.target.value) || 1 })}
-                            className="cell-input weight-input"
-                          />
+                        <td className="col-duration" data-label="Duration">
+                          <span className="duration-badge">{task.duration_days || calculateDuration(task.start_date, task.end_date)}d</span>
                         </td>
                         <td className="col-progress" data-label="Progress">
                           <div className="progress-cell">
@@ -961,24 +1306,12 @@ export default function ProjectPlanner({ token }) {
                             <span className="progress-value">{task.progress_percent || 0}%</span>
                           </div>
                         </td>
-                        <td className="col-contribution" data-label="Contribution">
-                          {calculateContribution(task.progress_percent, task.weight).toFixed(2)}
-                        </td>
                         <td className="col-status" data-label="Status">
                           <span className={`status-badge ${task.status}`}>
                             {task.status === 'not_started' ? 'Not Started' : 
                              task.status === 'in_progress' ? 'In Progress' :
                              task.status === 'completed' ? 'Completed' : 'Delayed'}
                           </span>
-                        </td>
-                        <td className="col-notes" data-label="Notes">
-                          <input
-                            type="text"
-                            value={task.notes || ''}
-                            onChange={(e) => updateTask(task.id, { notes: e.target.value })}
-                            className="cell-input notes-input"
-                            placeholder="Add notes..."
-                          />
                         </td>
                         <td className="col-actions" data-label="Actions">
                           <button 
@@ -1008,7 +1341,7 @@ export default function ProjectPlanner({ token }) {
                                 type="text"
                                 value={subtask.name}
                                 onChange={(e) => updateTask(subtask.id, { name: e.target.value })}
-                                className="cell-input"
+                                className="cell-input task-name-input"
                               />
                             </td>
                             <td className="col-date" data-label="Start Date">
@@ -1027,16 +1360,8 @@ export default function ProjectPlanner({ token }) {
                                 className="cell-input date-input"
                               />
                             </td>
-                            <td className="col-duration" data-label="Duration">{subtask.duration_days || calculateDuration(subtask.start_date, subtask.end_date)} days</td>
-                            <td className="col-weight" data-label="Weight">
-                              <input
-                                type="number"
-                                min="1"
-                                max="100"
-                                value={subtask.weight || 1}
-                                onChange={(e) => updateTask(subtask.id, { weight: parseInt(e.target.value) || 1 })}
-                                className="cell-input weight-input"
-                              />
+                            <td className="col-duration" data-label="Duration">
+                              <span className="duration-badge">{subtask.duration_days || calculateDuration(subtask.start_date, subtask.end_date)}d</span>
                             </td>
                             <td className="col-progress" data-label="Progress">
                               <div className="progress-cell">
@@ -1051,23 +1376,12 @@ export default function ProjectPlanner({ token }) {
                                 <span className="progress-value">{subtask.progress_percent || 0}%</span>
                               </div>
                             </td>
-                            <td className="col-contribution" data-label="Contribution">
-                              {calculateContribution(subtask.progress_percent, subtask.weight).toFixed(2)}
-                            </td>
                             <td className="col-status" data-label="Status">
                               <span className={`status-badge ${subtask.status}`}>
                                 {subtask.status === 'not_started' ? 'Not Started' : 
                                  subtask.status === 'in_progress' ? 'In Progress' :
                                  subtask.status === 'completed' ? 'Completed' : 'Delayed'}
                               </span>
-                            </td>
-                            <td className="col-notes" data-label="Notes">
-                              <input
-                                type="text"
-                                value={subtask.notes || ''}
-                                onChange={(e) => updateTask(subtask.id, { notes: e.target.value })}
-                                className="cell-input notes-input"
-                              />
                             </td>
                             <td className="col-actions" data-label="Actions">
                               <button 
@@ -1086,7 +1400,7 @@ export default function ProjectPlanner({ token }) {
             </div>
           )}
 
-          {/* Timeline View */}
+{/* Timeline View */}
           {viewMode === 'timeline' && (
             <div className="timeline-container">
               <div className="timeline-header">
@@ -1112,82 +1426,151 @@ export default function ProjectPlanner({ token }) {
                   </button>
                 </div>
                 {timelineScale === 'hour' && (
-                  <input
-                    type="date"
-                    className="timeline-focus-date"
-                    value={hourlyFocusDate}
-                    onChange={(e) => setHourlyFocusDate(e.target.value)}
-                    aria-label="Hourly timeline date"
-                  />
+                  <div className="timeline-hour-controls">
+                    <button
+                      type="button"
+                      className="timeline-hour-nav"
+                      onClick={() => shiftHourlyFocusDate(-1)}
+                      aria-label="Previous day"
+                      title="Previous day"
+                    >
+                      ‹
+                    </button>
+                    <input
+                      type="date"
+                      className="timeline-focus-date"
+                      value={hourlyFocusDate}
+                      onChange={(e) => setHourlyFocusDate(e.target.value)}
+                      aria-label="Hourly timeline date"
+                    />
+                    <button
+                      type="button"
+                      className="timeline-hour-nav"
+                      onClick={() => shiftHourlyFocusDate(1)}
+                      aria-label="Next day"
+                      title="Next day"
+                    >
+                      ›
+                    </button>
+                  </div>
+                )}
+                {timelineHeaderLabel ? (
+                  <div className="timeline-month-label" aria-label="Current timeline context">
+                    {timelineHeaderLabel}
+                  </div>
+                ) : null}
+
+                {/* Zoom Controls */}
+                <div className="timeline-zoom-controls">
+                  <button className="zoom-btn" onClick={handleZoomOut} title="Zoom Out">−</button>
+                  <span className="zoom-level">{Math.round(zoomLevel * 100)}%</span>
+                  <button className="zoom-btn" onClick={handleZoomIn} title="Zoom In">+</button>
+                  <button className="zoom-btn" onClick={handleZoomReset} title="Reset Zoom" style={{fontSize: '0.9rem'}}>⟲</button>
+                </div>
+                {todayPosition !== null && (
+                  <button className="btn-today" onClick={scrollToToday} title="Scroll to Today">
+                    📍 Today
+                  </button>
                 )}
               </div>
-              <div className="timeline-wrapper">
-                <div className={`timeline-grid ${timelineScale === 'hour' ? 'hour-mode' : ''}`}>
-                  <div className="timeline-labels">
-                    {timelineRows.map(task => (
-                      <div key={task.id} className="timeline-row-label" title={task.name}>
-                        <span className="task-name">{task.name.substring(0, 22)}{task.name.length > 22 ? '...' : ''}</span>
-                        <span className="task-dates">{formatShortDate(task.start_date)} - {formatShortDate(task.end_date)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="timeline-bars-container">
-                    <div className="timeline-columns">
-                      {timelineColumns.map((slot, idx) => (
-                        <div
-                          key={idx}
-                          className="timeline-col-header"
-                          title={
-                            timelineScale === 'hour'
-                              ? `${formatDate(slot.start)} ${slot.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-                              : formatDate(slot.start)
-                          }
-                        >
-                          <span className="day-name">
-                            {timelineScale === 'hour'
-                              ? slot.start.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase()
-                              : slot.start.toLocaleDateString('en-US', { weekday: 'short' })}
-                          </span>
-                          <span className="date-num">
-                            {timelineScale === 'hour'
-                              ? slot.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                              : slot.start.getDate()}
-                          </span>
-                        </div>
-                      ))}
+              <div className="timeline-viewport">
+                <div className="timeline-labels">
+                  <div className="timeline-labels-header" />
+                  {timelineRows && timelineRows.map(task => (
+                    <div key={task.id} className="timeline-row-label" title={task.name}>
+                      <span className="task-name">{task.name.substring(0, 22)}{task.name.length > 22 ? '...' : ''}</span>
+                      <span className="task-dates">{formatShortDate(task.start_date)} - {formatShortDate(task.end_date)}</span>
                     </div>
-                    <div className="timeline-rows">
-                      {timelineRows.map((task, rowIndex) => {
-                        const position = getTaskPosition(task, rowIndex);
-                        const status = calculateStatus(task.progress_percent, task.end_date);
-                        const duration = calculateDuration(task.start_date, task.end_date);
-                        return (
-                          <div key={task.id} className="timeline-row">
-                            {position && (
-                              <div
-                                className={`timeline-bar ${status}`}
-                                style={{
-                                  left: `${position.left}%`,
-                                  width: `${position.width}%`,
-                                }}
-                                title={`${task.name}: ${task.progress_percent || 0}% complete, ${duration} days`}
-                              >
-                                <div 
-                                  className="timeline-bar-fill" 
-                                  style={{ width: `${task.progress_percent || 0}%` }}
-                                ></div>
-                                <span className="timeline-bar-label">
-                                  {task.progress_percent || 0}%
-                                  {position.width > 15 && <span className="duration-label"> ({duration}d)</span>}
-                                </span>
-                              </div>
-                            )}
-                            {!position && (
-                              <span className="no-dates-msg">Set dates to view</span>
-                            )}
+                  ))}
+                </div>
+
+                <div
+                  className="timeline-scroll"
+                  ref={timelineScrollRef}
+                  onScroll={handleTimelineScroll}
+                  style={{
+                    ['--timeline-col-width']: `${timelineColWidthPx}px`,
+                    ['--timeline-header-total-height']: `${timelineHeaderTotalHeightPx}px`,
+                  }}
+                >
+                  <div className={`timeline-grid ${timelineScale === 'hour' ? 'hour-mode' : ''}`}>
+                    <div className="timeline-bars-container">
+                      <div className="timeline-columns">
+                        {timelineColumns && timelineColumns.map((slot, idx) => (
+                          <div
+                            key={idx}
+                            className="timeline-col-header"
+                            title={
+                              timelineScale === 'hour'
+                                ? `${formatDate(slot.start)} ${slot.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                : formatDate(slot.start)
+                            }
+                          >
+                            <span className="day-name">
+                              {timelineScale === 'hour'
+                                ? slot.start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                : timelineScale === 'week'
+                                  ? slot.start.toLocaleDateString('en-US', { month: 'short' }).toUpperCase()
+                                  : slot.start.toLocaleDateString('en-US', { weekday: 'short' })}
+                            </span>
+                            <span className="date-num">
+                              {timelineScale === 'hour'
+                                ? ''
+                                : timelineScale === 'week'
+                                  ? (() => {
+                                      const weekStart = slot.start;
+                                      const weekEnd = addDays(weekStart, 6);
+                                      const sameMonth = weekStart.getMonth() === weekEnd.getMonth() && weekStart.getFullYear() === weekEnd.getFullYear();
+                                      if (sameMonth) return `${weekStart.getDate()}-${weekEnd.getDate()}`;
+                                      const startLabel = weekStart.toLocaleDateString('en-US', { month: 'short' });
+                                      const endLabel = weekEnd.toLocaleDateString('en-US', { month: 'short' });
+                                      return `${startLabel} ${weekStart.getDate()}-${endLabel} ${weekEnd.getDate()}`;
+                                    })()
+                                  : slot.start.getDate()}
+                            </span>
                           </div>
-                        );
-                      })}
+                        ))}
+                      </div>
+
+                      <div className="timeline-rows">
+                        {todayPosition !== null && (
+                          <div
+                            className="timeline-today-indicator"
+                            style={{ left: `${todayPosition}px` }}
+                          />
+                        )}
+                        {timelineRows && timelineRows.map((task, rowIndex) => {
+                          const position = getTaskPosition(task, rowIndex);
+                          const status = calculateStatus(task.progress_percent, task.end_date);
+                          const duration = calculateDuration(task.start_date, task.end_date);
+                          return (
+                            <div key={task.id} className="timeline-row" style={position ? { position: 'relative' } : {}}>
+                              {position && (
+                                <div
+                                  className={`timeline-bar ${status}`}
+                                  style={{
+                                    left: position.unit === 'px' ? `${position.left}px` : `${position.left}%`,
+                                    width: position.unit === 'px' ? `${position.width}px` : `${position.width}%`,
+                                  }}
+                                  title={`${task.name}: ${task.progress_percent || 0}% complete, ${duration} days`}
+                                >
+                                  <div
+                                    className="timeline-bar-fill"
+                                    style={{ width: `${task.progress_percent || 0}%` }}
+                                  ></div>
+                                  <span className="timeline-bar-label">
+                                    {task.progress_percent || 0}%
+                                    {position.width > 15 && <span className="duration-label"> ({duration}d)</span>}
+                                  </span>
+                                </div>
+                              )}
+                              {!position && (
+                                <span className="no-dates-msg">Set dates to view</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>

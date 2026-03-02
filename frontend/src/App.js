@@ -2,6 +2,10 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import ProjectsPage from './ProjectsPage';
 import ProjectPlanner from './ProjectPlanner';
+import TeamPage from './TeamPage';
+import InventoryPage from './InventoryPage';
+import EquipmentPage from './EquipmentPage';
+import QuotesPage from './QuotesPage';
 
 const AUTH_STORAGE_KEY = 'app2_auth';
 const CLIENT_AUTH_STORAGE_KEY = 'app2_client_auth';
@@ -725,58 +729,67 @@ function CustomersPage({ token }) {
       )}
 
       {showForm && (
-        <form className="form-section" onSubmit={handleSubmit}>
-          <h2>{editingId ? '✏️ Edit Customer' : '➕ New Customer'}</h2>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>Name *</label>
-              <input
-                value={draft.name}
-                onChange={(e) => setDraft(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Customer name"
-                required
-              />
+        <div className="modal-backdrop" onClick={cancelForm}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{editingId ? '✏️ Edit Customer' : '➕ New Customer'}</h2>
+              <button className="modal-close" onClick={cancelForm}>×</button>
             </div>
-            <div className="form-group">
-              <label>Email</label>
-              <input
-                type="email"
-                value={draft.email}
-                onChange={(e) => setDraft(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="email@example.com"
-              />
-            </div>
-            <div className="form-group">
-              <label>Phone</label>
-              <input
-                value={draft.phone}
-                onChange={(e) => setDraft(prev => ({ ...prev, phone: e.target.value }))}
-                placeholder="555-0100"
-              />
-            </div>
-            <div className="form-group">
-              <label>Address</label>
-              <input
-                value={draft.address}
-                onChange={(e) => setDraft(prev => ({ ...prev, address: e.target.value }))}
-                placeholder="123 Main St, City"
-              />
-            </div>
-            <div className="form-group full-width">
-              <label>Notes</label>
-              <textarea
-                value={draft.notes}
-                onChange={(e) => setDraft(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Additional notes..."
-                rows={3}
-              />
-            </div>
+            <form onSubmit={handleSubmit}>
+              <div className="form-section">
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Name *</label>
+                    <input
+                      value={draft.name}
+                      onChange={(e) => setDraft(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Customer name"
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Email</label>
+                    <input
+                      type="email"
+                      value={draft.email}
+                      onChange={(e) => setDraft(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="email@example.com"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone</label>
+                    <input
+                      value={draft.phone}
+                      onChange={(e) => setDraft(prev => ({ ...prev, phone: e.target.value }))}
+                      placeholder="555-0100"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Address</label>
+                    <input
+                      value={draft.address}
+                      onChange={(e) => setDraft(prev => ({ ...prev, address: e.target.value }))}
+                      placeholder="123 Main St, City"
+                    />
+                  </div>
+                  <div className="form-group full-width">
+                    <label>Notes</label>
+                    <textarea
+                      value={draft.notes}
+                      onChange={(e) => setDraft(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Additional notes..."
+                      rows={3}
+                    />
+                  </div>
+                </div>
+                <div className="form-actions">
+                  <button type="submit" className="btn-primary">{editingId ? 'Update' : 'Create'}</button>
+                  <button type="button" className="btn-secondary" onClick={cancelForm}>Cancel</button>
+                </div>
+              </div>
+            </form>
           </div>
-          <div className="form-actions">
-            <button type="submit" className="btn-primary">{editingId ? 'Update' : 'Create'}</button>
-            <button type="button" className="btn-secondary" onClick={cancelForm}>Cancel</button>
-          </div>
-        </form>
+        </div>
       )}
 
       {loading ? <p className="loading">Loading customers...</p> : null}
@@ -1799,53 +1812,62 @@ function InvoicesPage({ token }) {
       )}
 
       {showForm && (
-        <form className="form-section" onSubmit={handleSubmit}>
-          <h2>➕ Create Invoice</h2>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>Job *</label>
-              <select 
-                value={draft.jobId} 
-                onChange={(e) => {
-                  const job = jobs.find(j => j.id === e.target.value);
-                  setDraft(prev => ({ 
-                    ...prev, 
-                    jobId: e.target.value,
-                    customerId: job?.customerId || ''
-                  }));
-                }} 
-                required
-              >
-                <option value="">Select Job</option>
-                {jobs.filter(j => !j.invoiceId).map(job => (
-                  <option key={job.id} value={job.id}>{job.id} - {job.title}</option>
-                ))}
-              </select>
+        <div className="modal-backdrop" onClick={() => setShowForm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>➕ Create Invoice</h2>
+              <button className="modal-close" onClick={() => setShowForm(false)}>×</button>
             </div>
-            <div className="form-group">
-              <label>Amount ($)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={draft.amount}
-                onChange={(e) => setDraft(prev => ({ ...prev, amount: e.target.value }))}
-                placeholder="0.00"
-              />
-            </div>
-            <div className="form-group full-width">
-              <label>Description</label>
-              <input
-                placeholder="Service description"
-                value={draft.items[0].description}
-                onChange={(e) => setDraft(prev => ({ ...prev, items: [{ ...prev.items[0], description: e.target.value }] }))}
-              />
-            </div>
+            <form onSubmit={handleSubmit}>
+              <div className="form-section">
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Job *</label>
+                    <select 
+                      value={draft.jobId} 
+                      onChange={(e) => {
+                        const job = jobs.find(j => j.id === e.target.value);
+                        setDraft(prev => ({ 
+                          ...prev, 
+                          jobId: e.target.value,
+                          customerId: job?.customerId || ''
+                        }));
+                      }} 
+                      required
+                    >
+                      <option value="">Select Job</option>
+                      {jobs.filter(j => !j.invoiceId).map(job => (
+                        <option key={job.id} value={job.id}>{job.id} - {job.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Amount ($)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={draft.amount}
+                      onChange={(e) => setDraft(prev => ({ ...prev, amount: e.target.value }))}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  <div className="form-group full-width">
+                    <label>Description</label>
+                    <input
+                      placeholder="Service description"
+                      value={draft.items[0].description}
+                      onChange={(e) => setDraft(prev => ({ ...prev, items: [{ ...prev.items[0], description: e.target.value }] }))}
+                    />
+                  </div>
+                </div>
+                <div className="form-actions">
+                  <button type="submit" className="btn-primary">Create Invoice</button>
+                  <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
+                </div>
+              </div>
+            </form>
           </div>
-          <div className="form-actions">
-            <button type="submit" className="btn-primary">Create Invoice</button>
-            <button type="button" className="btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-          </div>
-        </form>
+        </div>
       )}
 
       {!showForm && (
@@ -2068,6 +2090,7 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => loadStoredDarkMode());
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showToolsDropdown, setShowToolsDropdown] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isAuthed = Boolean(auth && auth.token && auth.user);
   const isClientAuthed = Boolean(clientAuth && clientAuth.token && clientAuth.user);
@@ -2165,10 +2188,25 @@ export default function App() {
       {isAuthed && canManageCustomers ? <NavLink to="/activity" onClick={() => setMobileNavOpen(false)}>Activity</NavLink> : null}
       {isAuthed && canManageCustomers ? <NavLink to="/projects" onClick={() => setMobileNavOpen(false)}>Projects</NavLink> : null}
       {isAuthed && canManageCustomers ? <NavLink to="/project-planner" onClick={() => setMobileNavOpen(false)}>Planner</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/export" onClick={() => setMobileNavOpen(false)}>Export</NavLink> : null}
+      {isAuthed && canManageCustomers ? <NavLink to="/team" onClick={() => setMobileNavOpen(false)}>Team</NavLink> : null}
+      {isAuthed && canManageCustomers ? (
+        <div className="dropdown-container">
+          <button className="dropdown-toggle" onClick={() => setShowToolsDropdown(!showToolsDropdown)}>
+            Tools ▾
+          </button>
+          {showToolsDropdown && (
+            <div className="dropdown-menu">
+              <NavLink to="/inventory" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📦 Inventory</NavLink>
+              <NavLink to="/equipment" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>🔧 Equipment</NavLink>
+              <NavLink to="/quotes" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📝 Quotes</NavLink>
+              <NavLink to="/export" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📊 Export</NavLink>
+            </div>
+          )}
+        </div>
+      ) : null}
       {!isAuthed ? <NavLink to="/login" onClick={() => setMobileNavOpen(false)}>Login</NavLink> : null}
     </>
-  ), [isAuthed, canManageCustomers]);
+  ), [isAuthed, canManageCustomers, showToolsDropdown]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -2180,6 +2218,18 @@ export default function App() {
       document.body.style.overflow = '';
     };
   }, [mobileNavOpen]);
+
+  // Close tools dropdown when clicking outside
+  useEffect(() => {
+    if (!showToolsDropdown) return;
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.dropdown-container')) {
+        setShowToolsDropdown(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showToolsDropdown]);
 
   return (
     <div className="app-shell">
@@ -2353,10 +2403,66 @@ export default function App() {
             )}
           />
           <Route
+            path="/team"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <TeamPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/equipment"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <EquipmentPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/quotes"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <QuotesPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/inventory"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <InventoryPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
             path="/export"
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
                 <ExportPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/inventory"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <InventoryPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/equipment"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <EquipmentPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/quotes"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <QuotesPage token={auth?.token} />
               </ProtectedRoute>
             )}
           />

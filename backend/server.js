@@ -25,6 +25,168 @@ let users = [
  { id: 'u-client', username: 'client', password: '1111', role: 'client' },
 ];
 
+// ============== TECHNICIANS DATA ==============
+let technicians = [
+ {
+   id: 'tech-1',
+   name: 'John Smith',
+   email: 'john.smith@example.com',
+   phone: '555-1001',
+   role: 'technician',
+   skills: ['HVAC', 'Electrical', 'Refrigeration'],
+   hourly_rate: 75,
+   certifications: ['EPA 608 Universal', 'OSHA 10', 'NATE Certified'],
+   availability: {
+     monday: { start: '08:00', end: '17:00' },
+     tuesday: { start: '08:00', end: '17:00' },
+     wednesday: { start: '08:00', end: '17:00' },
+     thursday: { start: '08:00', end: '17:00' },
+     friday: { start: '08:00', end: '17:00' },
+     saturday: null,
+     sunday: null
+   },
+   status: 'active',
+   color: '#0ea5e9',
+   hire_date: '2023-01-15',
+   notes: 'Senior technician, 10+ years experience',
+   avatar: null
+ },
+ {
+   id: 'tech-2',
+   name: 'Maria Garcia',
+   email: 'maria.garcia@example.com',
+   phone: '555-1002',
+   role: 'technician',
+   skills: ['Plumbing', 'Gas Fitting', 'Backflow Prevention'],
+   hourly_rate: 70,
+   certifications: ['Master Plumber', 'OSHA 10', 'Certified Gas Fitter'],
+   availability: {
+     monday: { start: '07:00', end: '16:00' },
+     tuesday: { start: '07:00', end: '16:00' },
+     wednesday: { start: '07:00', end: '16:00' },
+     thursday: { start: '07:00', end: '16:00' },
+     friday: { start: '07:00', end: '16:00' },
+     saturday: { start: '08:00', end: '12:00' },
+     sunday: null
+   },
+   status: 'active',
+   color: '#10b981',
+   hire_date: '2023-03-20',
+   notes: 'Specialist in commercial plumbing',
+   avatar: null
+ },
+ {
+   id: 'tech-3',
+   name: 'Robert Johnson',
+   email: 'robert.johnson@example.com',
+   phone: '555-1003',
+   role: 'technician',
+   skills: ['Electrical', 'Security Systems', 'Networking'],
+   hourly_rate: 80,
+   certifications: ['Master Electrician', 'OSHA 10', 'Security License'],
+   availability: {
+     monday: { start: '08:00', end: '17:00' },
+     tuesday: { start: '08:00', end: '17:00' },
+     wednesday: { start: '08:00', end: '17:00' },
+     thursday: { start: '08:00', end: '17:00' },
+     friday: { start: '08:00', end: '17:00' },
+     saturday: null,
+     sunday: null
+   },
+   status: 'active',
+   color: '#f59e0b',
+   hire_date: '2022-08-10',
+   notes: 'Expert in commercial electrical and security',
+   avatar: null
+ },
+ {
+   id: 'tech-4',
+   name: 'Sarah Williams',
+   email: 'sarah.williams@example.com',
+   phone: '555-1004',
+   role: 'technician',
+   skills: ['HVAC', 'Building Automation', 'Controls'],
+   hourly_rate: 72,
+   certifications: ['EPA 608 Type II', 'OSHA 10', 'BACnet Certified'],
+   availability: {
+     monday: { start: '09:00', end: '18:00' },
+     tuesday: { start: '09:00', end: '18:00' },
+     wednesday: { start: '09:00', end: '18:00' },
+     thursday: { start: '09:00', end: '18:00' },
+     friday: { start: '09:00', end: '18:00' },
+     saturday: null,
+     sunday: null
+   },
+   status: 'active',
+   color: '#8b5cf6',
+   hire_date: '2024-01-05',
+   notes: 'Specializes in smart building systems',
+   avatar: null
+ },
+ {
+   id: 'tech-5',
+   name: 'David Brown',
+   email: 'david.brown@example.com',
+   phone: '555-1005',
+   role: 'technician',
+   skills: ['General Maintenance', 'Carpentry', 'Painting'],
+   hourly_rate: 55,
+   certifications: ['OSHA 10', 'General Contractor License'],
+   availability: {
+     monday: { start: '08:00', end: '17:00' },
+     tuesday: { start: '08:00', end: '17:00' },
+     wednesday: { start: '08:00', end: '17:00' },
+     thursday: { start: '08:00', end: '17:00' },
+     friday: null,
+     saturday: { start: '09:00', end: '15:00' },
+     sunday: null
+   },
+   status: 'on_leave',
+   color: '#ec4899',
+   hire_date: '2023-06-15',
+   notes: 'Currently on paternity leave until April',
+   avatar: null
+ }
+];
+
+// Helper to calculate technician workload
+const calculateTechnicianWorkload = (techId, date) => {
+ const targetDate = date || new Date().toISOString().split('T')[0];
+ 
+ // Get jobs assigned to this technician
+ const assignedJobs = jobs.filter(j => 
+   j.assignedTo === techId && 
+   j.scheduledDate === targetDate &&
+   j.status !== 'completed'
+ );
+ 
+ // Get tasks assigned to this technician
+ const assignedTasks = tasks.filter(t => 
+   t.assignee === techId &&
+   t.status !== 'completed' &&
+   t.start_date <= targetDate &&
+   t.end_date >= targetDate
+ );
+ 
+ // Calculate estimated hours (assuming 8 hour days per job/task)
+ const jobHours = assignedJobs.length * 8;
+ const taskHours = assignedTasks.reduce((sum, t) => {
+   const duration = t.duration_days || 1;
+   return sum + (duration * 8);
+ }, 0);
+ 
+ const totalHours = jobHours + taskHours;
+ const workloadPercent = Math.min(100, (totalHours / 40) * 100); // 40 hours = 100%
+ 
+ return {
+   date: targetDate,
+   jobCount: assignedJobs.length,
+   taskCount: assignedTasks.length,
+   totalHours,
+   workloadPercent: Math.round(workloadPercent)
+ };
+};
+
 // ============== CUSTOMERS DATA (2026) ==============
 let customers = [
  { id: 'CUST-001', name: 'Acme Corporation', email: 'contact@acme.com', phone: '555-0101', address: '123 Business Ave, Downtown', created_at: '2026-01-05T10:00:00Z' },
@@ -460,8 +622,7 @@ const tasks = [
    progress_percent: 0,
    weight: 20,
    status: 'not_started',
-   sort_order: 5,
-   notes: 'Pending completion of Site 4',
+   sort_order: 5,   notes: 'Pending completion of Site 4',
    updated_by: 'admin',
    updated_at: '2026-03-01T10:00:00Z'
  },
@@ -553,6 +714,55 @@ const notifications = [
  { id: 'notif-001', user_id: 'admin', title: 'Job Completed', message: 'HVAC preventive maintenance completed successfully', read: false, timestamp: '2026-01-20T10:30:00Z' },
  { id: 'notif-002', user_id: 'admin', title: 'Payment Received', message: 'Invoice INV-2026-001 has been paid', read: true, timestamp: '2026-01-25T14:00:00Z' },
  { id: 'notif-003', user_id: 'admin', title: 'New Job Assigned', message: 'New job: Electrical panel audit assigned to technician', read: false, timestamp: '2026-02-10T10:00:00Z' },
+];
+
+// ============== INVENTORY/PARTS DATA (2026) ==============
+let inventory = [
+ { id: 'INV-001', name: 'HVAC Filter 20x25x1', sku: 'FLT-2025-01', category: 'Filters', quantity: 50, unit_price: 15.99, reorder_level: 10, location: 'Warehouse A', supplier: 'AirPure Supplies', created_at: '2026-01-05T08:00:00Z' },
+ { id: 'INV-002', name: 'Capacitor 45/5 MFD', sku: 'CAP-455-01', category: 'Electrical', quantity: 25, unit_price: 35.50, reorder_level: 5, location: 'Warehouse B', supplier: 'CoolTech Parts', created_at: '2026-01-10T09:00:00Z' },
+ { id: 'INV-003', name: 'Refrigerant R-410A (25lb)', sku: 'REF-410A-25', category: 'Refrigerant', quantity: 12, unit_price: 185.00, reorder_level: 3, location: 'Warehouse A', supplier: 'ChemCool Inc', created_at: '2026-01-15T10:00:00Z' },
+ { id: 'INV-004', name: 'Contactor 30A 24V', sku: 'CON-30-24', category: 'Electrical', quantity: 30, unit_price: 22.75, reorder_level: 8, location: 'Warehouse B', supplier: 'ElectricPro', created_at: '2026-01-20T11:00:00Z' },
+ { id: 'INV-005', name: 'Thermostat Digital', sku: 'THER-DIG-01', category: 'Controls', quantity: 15, unit_price: 89.99, reorder_level: 5, location: 'Warehouse A', supplier: 'SmartHome Tech', created_at: '2026-02-01T08:00:00Z' },
+ { id: 'INV-006', name: 'Copper Pipe 1/2" (100ft)', sku: 'PIPE-CU-12', category: 'Plumbing', quantity: 8, unit_price: 125.00, reorder_level: 3, location: 'Warehouse C', supplier: 'PipeMaster', created_at: '2026-02-05T14:00:00Z' },
+ { id: 'INV-007', name: 'Ball Valve 3/4"', sku: 'VALVE-BV-34', category: 'Plumbing', quantity: 40, unit_price: 18.50, reorder_level: 10, location: 'Warehouse C', supplier: 'PipeMaster', created_at: '2026-02-10T09:00:00Z' },
+ { id: 'INV-008', name: 'Circuit Breaker 20A', sku: 'CB-20-01', category: 'Electrical', quantity: 60, unit_price: 12.99, reorder_level: 15, location: 'Warehouse B', supplier: 'ElectricPro', created_at: '2026-02-12T10:00:00Z' },
+];
+
+// ============== EQUIPMENT/ASSETS DATA (2026) ==============
+let equipment = [
+ { id: 'EQP-001', name: 'Carrier Rooftop Unit RTU-1', type: 'HVAC', customerId: 'CUST-001', location: 'Building A - Roof', serial_number: 'CR-2024-001', install_date: '2024-06-15', status: 'operational', notes: 'Primary building HVAC unit', created_at: '2026-01-05T08:00:00Z' },
+ { id: 'EQP-002', name: 'Generator GEN-500', type: 'Electrical', customerId: 'CUST-003', location: 'Warehouse North', serial_number: 'GN-2023-042', install_date: '2023-11-20', status: 'operational', notes: '500kW backup generator', created_at: '2026-01-10T09:00:00Z' },
+ { id: 'EQP-003', name: 'Boiler BLR-200', type: 'Plumbing', customerId: 'CUST-004', location: 'Mechanical Room', serial_number: 'BL-2022-015', install_date: '2022-08-10', status: 'operational', notes: 'Main hospital boiler', created_at: '2026-01-15T10:00:00Z' },
+ { id: 'EQP-004', name: 'Chiller CH-1000', type: 'HVAC', customerId: 'CUST-006', location: 'Hotel Basement', serial_number: 'CH-2021-008', install_date: '2021-03-25', status: 'needs_maintenance', notes: 'Main cooling system - annual service due', created_at: '2026-01-20T11:00:00Z' },
+ { id: 'EQP-005', name: 'Elevator ELV-3', type: 'General', customerId: 'CUST-006', location: 'Main Building', serial_number: 'ELV-2020-003', install_date: '2020-01-15', status: 'operational', notes: 'Passenger elevator', created_at: '2026-02-01T08:00:00Z' },
+ { id: 'EQP-006', name: 'Security System SEC-HQ', type: 'Security', customerId: 'CUST-005', location: 'District Office', serial_number: 'SEC-2023-101', install_date: '2023-09-01', status: 'operational', notes: 'Headquarters access control', created_at: '2026-02-05T14:00:00Z' },
+];
+
+// ============== QUOTES/ESTIMATES DATA (2026) ==============
+let quotes = [
+ { id: 'QUO-2026-001', customerId: 'CUST-001', title: 'HVAC Upgrade Proposal', description: 'Complete HVAC system upgrade for Building A', status: 'pending', total_amount: 45000.00, valid_until: '2026-03-15', created_by: 'admin', created_at: '2026-02-01T10:00:00Z', items: [
+   { description: 'New RTU installation', quantity: 1, unit_price: 35000 },
+   { description: 'Ductwork modifications', quantity: 1, unit_price: 7500 },
+   { description: 'Electrical upgrades', quantity: 1, unit_price: 2500 }
+ ]},
+ { id: 'QUO-2026-002', customerId: 'CUST-002', title: 'Preventive Maintenance Contract', description: 'Annual PM contract for all systems', status: 'accepted', total_amount: 12000.00, valid_until: '2026-02-28', created_by: 'admin', created_at: '2026-02-10T09:00:00Z', accepted_at: '2026-02-12T14:00:00Z', jobId: null, items: [
+   { description: 'Quarterly HVAC maintenance', quantity: 4, unit_price: 2000 },
+   { description: 'Emergency service call', quantity: 2, unit_price: 150 },
+   { description: 'Filter replacement', quantity: 12, unit_price: 150 }
+ ]},
+ { id: 'QUO-2026-003', customerId: 'CUST-004', title: 'Boiler Replacement Estimate', description: 'Replace aging boiler system', status: 'pending', total_amount: 85000.00, valid_until: '2026-04-01', created_by: 'admin', created_at: '2026-02-15T11:00:00Z', items: [
+   { description: 'New boiler unit', quantity: 1, unit_price: 65000 },
+   { description: 'Piping and installation', quantity: 1, unit_price: 15000 },
+   { description: 'Permits and inspections', quantity: 1, unit_price: 5000 }
+ ]},
+];
+
+// ============== RECURRING JOBS DATA (2026) ==============
+let recurringJobs = [
+ { id: 'REC-001', customerId: 'CUST-001', title: 'Quarterly HVAC Maintenance', description: 'Preventive maintenance for all HVAC units', frequency: 'quarterly', interval_value: 3, interval_unit: 'months', start_date: '2026-01-15', end_date: '2026-12-31', status: 'active', assignedTo: 'technician', category: 'maintenance', priority: 'medium', estimated_duration_hours: 4, created_by: 'admin', created_at: '2026-01-05T08:00:00Z' },
+ { id: 'REC-002', customerId: 'CUST-003', title: 'Monthly Generator Test', description: 'Monthly generator load test and inspection', frequency: 'monthly', interval_value: 1, interval_unit: 'months', start_date: '2026-01-01', end_date: '2026-12-31', status: 'active', assignedTo: 'technician', category: 'inspection', priority: 'high', estimated_duration_hours: 2, created_by: 'admin', created_at: '2026-01-10T09:00:00Z' },
+ { id: 'REC-003', customerId: 'CUST-006', title: 'Weekly Elevator Inspection', description: 'Weekly safety inspection and test', frequency: 'weekly', interval_value: 1, interval_unit: 'weeks', start_date: '2026-01-01', end_date: null, status: 'active', assignedTo: 'technician', category: 'inspection', priority: 'high', estimated_duration_hours: 1, created_by: 'admin', created_at: '2026-01-15T10:00:00Z' },
+ { id: 'REC-004', customerId: 'CUST-005', title: 'Annual Fire Safety Inspection', description: 'Yearly fire system inspection', frequency: 'yearly', interval_value: 1, interval_unit: 'years', start_date: '2026-06-01', end_date: '2026-06-30', status: 'scheduled', assignedTo: 'technician', category: 'safety', priority: 'high', estimated_duration_hours: 8, created_by: 'admin', created_at: '2026-02-01T08:00:00Z' },
 ];
 
 // ============== CALCULATION ENGINE ==============
@@ -781,6 +991,165 @@ app.delete('/api/customers/:id', requireAuth, requireRoles(['admin']), (req, res
  res.json({ ok: true });
 });
 
+// ============== TECHNICIANS ENDPOINTS ==============
+
+// Get all technicians
+app.get('/api/technicians', requireAuth, (req, res) => {
+ const techniciansWithWorkload = technicians.map(tech => ({
+   ...tech,
+   workload: calculateTechnicianWorkload(tech.id)
+ }));
+ res.json(techniciansWithWorkload);
+});
+
+// Get single technician
+app.get('/api/technicians/:id', requireAuth, (req, res) => {
+ const technician = technicians.find(t => t.id === req.params.id);
+ if (!technician) return res.status(404).json({ error: 'Technician not found' });
+ 
+ const workload = calculateTechnicianWorkload(technician.id);
+ const assignedJobs = jobs.filter(j => j.assignedTo === technician.id && j.status !== 'completed');
+ const assignedTasks = tasks.filter(t => t.assignee === technician.id && t.status !== 'completed');
+ 
+ res.json({
+   ...technician,
+   workload,
+   assignedJobs: assignedJobs.length,
+   assignedTasks: assignedTasks.length
+ });
+});
+
+// Create technician
+app.post('/api/technicians', requireAuth, requireRoles(['admin']), (req, res) => {
+ const { name, email, phone, skills, hourly_rate, certifications, availability, status, color, hire_date, notes } = req.body;
+ 
+ if (!name) return res.status(400).json({ error: 'Technician name is required' });
+ 
+ const newTechnician = {
+   id: `tech-${Date.now()}`,
+   name,
+   email: email || '',
+   phone: phone || '',
+   role: 'technician',
+   skills: skills || [],
+   hourly_rate: hourly_rate || 50,
+   certifications: certifications || [],
+   availability: availability || {
+     monday: { start: '08:00', end: '17:00' },
+     tuesday: { start: '08:00', end: '17:00' },
+     wednesday: { start: '08:00', end: '17:00' },
+     thursday: { start: '08:00', end: '17:00' },
+     friday: { start: '08:00', end: '17:00' },
+     saturday: null,
+     sunday: null
+   },
+   status: status || 'active',
+   color: color || '#0ea5e9',
+   hire_date: hire_date || new Date().toISOString().split('T')[0],
+   notes: notes || '',
+   avatar: null
+ };
+ 
+ technicians.push(newTechnician);
+ logActivity('technician', newTechnician.id, req.authUser.username, 'created', `New technician added: ${name}`);
+ res.status(201).json(newTechnician);
+});
+
+// Update technician
+app.put('/api/technicians/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const technician = technicians.find(t => t.id === req.params.id);
+ if (!technician) return res.status(404).json({ error: 'Technician not found' });
+ 
+ const { name, email, phone, skills, hourly_rate, certifications, availability, status, color, notes } = req.body;
+ 
+ if (name !== undefined) technician.name = name;
+ if (email !== undefined) technician.email = email;
+ if (phone !== undefined) technician.phone = phone;
+ if (skills !== undefined) technician.skills = skills;
+ if (hourly_rate !== undefined) technician.hourly_rate = hourly_rate;
+ if (certifications !== undefined) technician.certifications = certifications;
+ if (availability !== undefined) technician.availability = availability;
+ if (status !== undefined) technician.status = status;
+ if (color !== undefined) technician.color = color;
+ if (notes !== undefined) technician.notes = notes;
+ 
+ logActivity('technician', technician.id, req.authUser.username, 'updated', `Technician ${technician.name} updated`);
+ res.json(technician);
+});
+
+// Delete technician
+app.delete('/api/technicians/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const index = technicians.findIndex(t => t.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Technician not found' });
+ 
+ const technician = technicians[index];
+ technicians.splice(index, 1);
+ logActivity('technician', technician.id, req.authUser.username, 'deleted', `Technician ${technician.name} deleted`);
+ res.json({ ok: true });
+});
+
+// Get technician workload for specific date
+app.get('/api/technicians/:id/workload', requireAuth, (req, res) => {
+ const technician = technicians.find(t => t.id === req.params.id);
+ if (!technician) return res.status(404).json({ error: 'Technician not found' });
+ 
+ const date = req.query.date || new Date().toISOString().split('T')[0];
+ const workload = calculateTechnicianWorkload(technician.id, date);
+ 
+ const assignedJobs = jobs.filter(j => j.assignedTo === technician.id && j.scheduledDate === date);
+ const assignedTasks = tasks.filter(t => t.assignee === technician.id && t.start_date <= date && t.end_date >= date);
+ 
+ res.json({
+   technician: { id: technician.id, name: technician.name },
+   workload,
+   jobs: assignedJobs,
+   tasks: assignedTasks
+ });
+});
+
+// Get available technicians for date and skill
+app.get('/api/technicians/available', requireAuth, (req, res) => {
+ const { date, skill } = req.query;
+ 
+ if (!date) return res.status(400).json({ error: 'Date parameter is required' });
+ 
+ const targetDate = new Date(date);
+ const dayOfWeek = targetDate.toLocaleDateString('en-US', { weekday: 'lowercase' });
+ 
+ let availableTechs = technicians.filter(tech => {
+   if (tech.status !== 'active') return false;
+   
+   const dayAvailability = tech.availability && tech.availability[dayOfWeek];
+   if (!dayAvailability || !dayAvailability.start) return false;
+   
+   if (skill && skill.length > 0) {
+     return tech.skills && tech.skills.some(s => s.toLowerCase().includes(skill.toLowerCase()));
+   }
+   
+   return true;
+ });
+ 
+ availableTechs = availableTechs.map(tech => ({
+   ...tech,
+   workload: calculateTechnicianWorkload(tech.id, date)
+ }));
+ 
+ availableTechs.sort((a, b) => a.workload.workloadPercent - b.workload.workloadPercent);
+ 
+ res.json(availableTechs);
+});
+
+// Get all skills
+app.get('/api/technicians/skills', requireAuth, (req, res) => {
+ const allSkills = new Set();
+ technicians.forEach(tech => {
+   if (tech.skills) {
+     tech.skills.forEach(skill => allSkills.add(skill));
+   }
+ });
+ res.json(Array.from(allSkills).sort());
+});
+
 // ============== JOBS ENDPOINTS ==============
 app.get('/api/jobs', requireAuth, (req, res) => {
  if (req.authUser.role === 'technician') {
@@ -878,6 +1247,20 @@ app.patch('/api/jobs/:id/status', requireAuth, (req, res) => {
  existing.updated_at = new Date().toISOString();
  logActivity('job', existing.id, req.authUser.username, 'status_changed', `Job ${existing.id} status changed to ${status}`);
  return res.json(existing);
+});
+
+// DELETE /api/jobs/:id - Delete a job
+app.delete('/api/jobs/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const existing = findJobById(req.params.id);
+ if (!existing) return res.status(404).json({ error: 'Job not found' });
+ 
+ const index = jobs.findIndex(j => j.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Job not found' });
+ 
+ const job = jobs[index];
+ jobs.splice(index, 1);
+ logActivity('job', job.id, req.authUser.username, 'deleted', `Job ${job.id} deleted`);
+ return res.json({ ok: true });
 });
 
 app.post('/api/jobs/:id/checkin', requireAuth, (req, res) => {
@@ -1067,6 +1450,21 @@ app.get('/api/invoices', requireAuth, (req, res) => {
    return res.json(invoices.filter((invoice) => invoice.customerId === req.authUser.id));
  }
  return res.json(invoices);
+});
+
+// GET /api/invoices/:id - Get single invoice
+app.get('/api/invoices/:id', requireAuth, (req, res) => {
+ const invoice = invoices.find(i => i.id === req.params.id);
+ if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+ 
+ // Clients can only see their own invoices
+ if (req.authUser.role === 'client' && invoice.customerId !== req.authUser.id) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+ 
+ // Include job details if available
+ const job = jobs.find(j => j.id === invoice.jobId);
+ res.json({ ...invoice, job: job || null });
 });
 
 app.post('/api/invoices', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
@@ -1395,6 +1793,117 @@ app.patch('/api/tasks/:id/dates', requireAuth, requireRoles(['admin', 'dispatche
  res.json(task);
 });
 
+// ============== TASK ATTENDANCE ENDPOINTS ==============
+
+// POST /api/tasks/:id/start - Start task (set actualStart)
+app.post('/api/tasks/:id/start', requireAuth, (req, res) => {
+ const task = tasks.find(t => t.id === req.params.id);
+ if (!task) return res.status(404).json({ error: 'Task not found' });
+ 
+ // Check permission: admin/dispatcher or assigned technician
+ const isAdminOrDispatcher = ['admin', 'dispatcher'].includes(req.authUser.role);
+ const isAssignedTech = task.assignee === req.authUser.username;
+ if (!isAdminOrDispatcher && !isAssignedTech) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+ 
+ // Cannot start if already completed
+ if (task.status === 'completed') {
+   return res.status(400).json({ error: 'Cannot start a completed task' });
+ }
+ 
+ // Set actual start time
+ task.actualStart = new Date().toISOString();
+ task.status = 'in_progress';
+ task.updated_by = req.authUser.username;
+ task.updated_at = new Date().toISOString();
+ 
+ recalculateProject(task.project_id);
+ logActivity('task', task.id, req.authUser.username, 'started', `Task "${task.name}" started`);
+ res.json(task);
+});
+
+// POST /api/tasks/:id/pause - Pause task
+app.post('/api/tasks/:id/pause', requireAuth, (req, res) => {
+ const task = tasks.find(t => t.id === req.params.id);
+ if (!task) return res.status(404).json({ error: 'Task not found' });
+ 
+ // Check permission: admin/dispatcher or assigned technician
+ const isAdminOrDispatcher = ['admin', 'dispatcher'].includes(req.authUser.role);
+ const isAssignedTech = task.assignee === req.authUser.username;
+ if (!isAdminOrDispatcher && !isAssignedTech) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+ 
+ // Can only pause if in progress
+ if (task.status !== 'in_progress') {
+   return res.status(400).json({ error: 'Can only pause tasks that are in progress' });
+ }
+ 
+ task.status = 'paused';
+ task.updated_by = req.authUser.username;
+ task.updated_at = new Date().toISOString();
+ 
+ recalculateProject(task.project_id);
+ logActivity('task', task.id, req.authUser.username, 'paused', `Task "${task.name}" paused`);
+ res.json(task);
+});
+
+// POST /api/tasks/:id/resume - Resume task
+app.post('/api/tasks/:id/resume', requireAuth, (req, res) => {
+ const task = tasks.find(t => t.id === req.params.id);
+ if (!task) return res.status(404).json({ error: 'Task not found' });
+ 
+ // Check permission: admin/dispatcher or assigned technician
+ const isAdminOrDispatcher = ['admin', 'dispatcher'].includes(req.authUser.role);
+ const isAssignedTech = task.assignee === req.authUser.username;
+ if (!isAdminOrDispatcher && !isAssignedTech) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+ 
+ // Can only resume if paused
+ if (task.status !== 'paused') {
+   return res.status(400).json({ error: 'Can only resume paused tasks' });
+ }
+ 
+ task.status = 'in_progress';
+ task.updated_by = req.authUser.username;
+ task.updated_at = new Date().toISOString();
+ 
+ recalculateProject(task.project_id);
+ logActivity('task', task.id, req.authUser.username, 'resumed', `Task "${task.name}" resumed`);
+ res.json(task);
+});
+
+// POST /api/tasks/:id/finish - Finish task (set actualEnd, mark completed)
+app.post('/api/tasks/:id/finish', requireAuth, (req, res) => {
+ const task = tasks.find(t => t.id === req.params.id);
+ if (!task) return res.status(404).json({ error: 'Task not found' });
+ 
+ // Check permission: admin/dispatcher or assigned technician
+ const isAdminOrDispatcher = ['admin', 'dispatcher'].includes(req.authUser.role);
+ const isAssignedTech = task.assignee === req.authUser.username;
+ if (!isAdminOrDispatcher && !isAssignedTech) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+ 
+ // Cannot finish if already completed
+ if (task.status === 'completed') {
+   return res.status(400).json({ error: 'Task already completed' });
+ }
+ 
+ // Set actual end time and mark as completed
+ task.actualEnd = new Date().toISOString();
+ task.progress_percent = 100;
+ task.status = 'completed';
+ task.updated_by = req.authUser.username;
+ task.updated_at = new Date().toISOString();
+ 
+ recalculateProject(task.project_id);
+ logActivity('task', task.id, req.authUser.username, 'finished', `Task "${task.name}" completed`);
+ res.json(task);
+});
+
 // Get planner timeline data
 app.get('/api/projects/:id/planner', requireAuth, (req, res) => {
  const project = projects.find(p => p.id === req.params.id);
@@ -1504,6 +2013,451 @@ app.get('/api/export/customers', requireAuth, requireRoles(['admin', 'dispatcher
  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
  res.setHeader('Content-Disposition', `attachment; filename="customers-export-${new Date().toISOString().slice(0, 10)}.csv"`);
  return res.send(csv);
+});
+
+// ============== INVENTORY API ENDPOINTS =============
+
+// Get all inventory items
+app.get('/api/inventory', requireAuth, (req, res) => {
+ res.json(inventory);
+});
+
+// Get single inventory item
+app.get('/api/inventory/:id', requireAuth, (req, res) => {
+ const item = inventory.find(i => i.id === req.params.id);
+ if (!item) return res.status(404).json({ error: 'Inventory item not found' });
+ res.json(item);
+});
+
+// Create inventory item
+app.post('/api/inventory', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { name, sku, category, quantity, unit_price, reorder_level, location, supplier } = req.body;
+ 
+ if (!name) return res.status(400).json({ error: 'Item name is required' });
+ 
+ const newItem = {
+   id: `INV-${String(inventory.length + 1).padStart(3, '0')}`,
+   name,
+   sku: sku || '',
+   category: category || 'General',
+   quantity: parseInt(quantity) || 0,
+   unit_price: parseFloat(unit_price) || 0,
+   reorder_level: parseInt(reorder_level) || 5,
+   location: location || '',
+   supplier: supplier || '',
+   created_at: new Date().toISOString()
+ };
+ 
+ inventory.push(newItem);
+ logActivity('inventory', newItem.id, req.authUser.username, 'created', `Added inventory item: ${name}`);
+ res.status(201).json(newItem);
+});
+
+// Update inventory item
+app.put('/api/inventory/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const item = inventory.find(i => i.id === req.params.id);
+ if (!item) return res.status(404).json({ error: 'Inventory item not found' });
+ 
+ const { name, sku, category, quantity, unit_price, reorder_level, location, supplier } = req.body;
+ 
+ if (name !== undefined) item.name = name;
+ if (sku !== undefined) item.sku = sku;
+ if (category !== undefined) item.category = category;
+ if (quantity !== undefined) item.quantity = parseInt(quantity);
+ if (unit_price !== undefined) item.unit_price = parseFloat(unit_price);
+ if (reorder_level !== undefined) item.reorder_level = parseInt(reorder_level);
+ if (location !== undefined) item.location = location;
+ if (supplier !== undefined) item.supplier = supplier;
+ 
+ logActivity('inventory', item.id, req.authUser.username, 'updated', `Updated inventory item: ${item.name}`);
+ res.json(item);
+});
+
+// Delete inventory item
+app.delete('/api/inventory/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const index = inventory.findIndex(i => i.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Inventory item not found' });
+ 
+ const item = inventory[index];
+ inventory.splice(index, 1);
+ logActivity('inventory', item.id, req.authUser.username, 'deleted', `Deleted inventory item: ${item.name}`);
+ res.json({ ok: true });
+});
+
+// Get low stock items
+app.get('/api/inventory/low-stock', requireAuth, (req, res) => {
+ const lowStock = inventory.filter(item => item.quantity <= item.reorder_level);
+ res.json(lowStock);
+});
+
+// ============== EQUIPMENT API ENDPOINTS =============
+
+// Get all equipment
+app.get('/api/equipment', requireAuth, (req, res) => {
+ res.json(equipment);
+});
+
+// Get equipment by customer
+app.get('/api/equipment/customer/:customerId', requireAuth, (req, res) => {
+ const customerEquipment = equipment.filter(e => e.customerId === req.params.customerId);
+ res.json(customerEquipment);
+});
+
+// Get single equipment
+app.get('/api/equipment/:id', requireAuth, (req, res) => {
+ const item = equipment.find(e => e.id === req.params.id);
+ if (!item) return res.status(404).json({ error: 'Equipment not found' });
+ res.json(item);
+});
+
+// Create equipment
+app.post('/api/equipment', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { name, type, customerId, location, serial_number, install_date, status, notes } = req.body;
+ 
+ if (!name) return res.status(400).json({ error: 'Equipment name is required' });
+ 
+ const newEquipment = {
+   id: `EQP-${String(equipment.length + 1).padStart(3, '0')}`,
+   name,
+   type: type || 'General',
+   customerId: customerId || '',
+   location: location || '',
+   serial_number: serial_number || '',
+   install_date: install_date || null,
+   status: status || 'operational',
+   notes: notes || '',
+   created_at: new Date().toISOString()
+ };
+ 
+ equipment.push(newEquipment);
+ logActivity('equipment', newEquipment.id, req.authUser.username, 'created', `Added equipment: ${name}`);
+ res.status(201).json(newEquipment);
+});
+
+// Update equipment
+app.put('/api/equipment/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const item = equipment.find(e => e.id === req.params.id);
+ if (!item) return res.status(404).json({ error: 'Equipment not found' });
+ 
+ const { name, type, customerId, location, serial_number, install_date, status, notes } = req.body;
+ 
+ if (name !== undefined) item.name = name;
+ if (type !== undefined) item.type = type;
+ if (customerId !== undefined) item.customerId = customerId;
+ if (location !== undefined) item.location = location;
+ if (serial_number !== undefined) item.serial_number = serial_number;
+ if (install_date !== undefined) item.install_date = install_date;
+ if (status !== undefined) item.status = status;
+ if (notes !== undefined) item.notes = notes;
+ 
+ logActivity('equipment', item.id, req.authUser.username, 'updated', `Updated equipment: ${item.name}`);
+ res.json(item);
+});
+
+// Delete equipment
+app.delete('/api/equipment/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const index = equipment.findIndex(e => e.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Equipment not found' });
+ 
+ const item = equipment[index];
+ equipment.splice(index, 1);
+ logActivity('equipment', item.id, req.authUser.username, 'deleted', `Deleted equipment: ${item.name}`);
+ res.json({ ok: true });
+});
+
+// Get equipment needing maintenance
+app.get('/api/equipment/maintenance', requireAuth, (req, res) => {
+ const needsMaintenance = equipment.filter(e => e.status === 'needs_maintenance' || e.status === 'out_of_service');
+ res.json(needsMaintenance);
+});
+
+// ============== QUOTES API ENDPOINTS =============
+
+// Get all quotes
+app.get('/api/quotes', requireAuth, (req, res) => {
+ res.json(quotes);
+});
+
+// Get quote by customer
+app.get('/api/quotes/customer/:customerId', requireAuth, (req, res) => {
+ const customerQuotes = quotes.filter(q => q.customerId === req.params.customerId);
+ res.json(customerQuotes);
+});
+
+// Get single quote
+app.get('/api/quotes/:id', requireAuth, (req, res) => {
+ const quote = quotes.find(q => q.id === req.params.id);
+ if (!quote) return res.status(404).json({ error: 'Quote not found' });
+ res.json(quote);
+});
+
+// Create quote
+app.post('/api/quotes', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { customerId, title, description, total_amount, valid_until, items } = req.body;
+ 
+ if (!customerId || !title) return res.status(400).json({ error: 'Customer ID and title are required' });
+ 
+ const year = new Date().getFullYear();
+ const nextNum = quotes.length + 1;
+ 
+ const newQuote = {
+   id: `QUO-${year}-${String(nextNum).padStart(3, '0')}`,
+   customerId,
+   title,
+   description: description || '',
+   status: 'pending',
+   total_amount: parseFloat(total_amount) || 0,
+   valid_until: valid_until || null,
+   created_by: req.authUser.username,
+   created_at: new Date().toISOString(),
+   items: items || []
+ };
+ 
+ quotes.push(newQuote);
+ logActivity('quote', newQuote.id, req.authUser.username, 'created', `Created quote: ${title}`);
+ res.status(201).json(newQuote);
+});
+
+// Update quote
+app.put('/api/quotes/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const quote = quotes.find(q => q.id === req.params.id);
+ if (!quote) return res.status(404).json({ error: 'Quote not found' });
+ 
+ const { title, description, total_amount, valid_until, items } = req.body;
+ 
+ if (title !== undefined) quote.title = title;
+ if (description !== undefined) quote.description = description;
+ if (total_amount !== undefined) quote.total_amount = parseFloat(total_amount);
+ if (valid_until !== undefined) quote.valid_until = valid_until;
+ if (items !== undefined) quote.items = items;
+ 
+ logActivity('quote', quote.id, req.authUser.username, 'updated', `Updated quote: ${quote.title}`);
+ res.json(quote);
+});
+
+// Accept quote
+app.post('/api/quotes/:id/accept', requireAuth, (req, res) => {
+ const quote = quotes.find(q => q.id === req.params.id);
+ if (!quote) return res.status(404).json({ error: 'Quote not found' });
+ 
+ quote.status = 'accepted';
+ quote.accepted_at = new Date().toISOString();
+ 
+ logActivity('quote', quote.id, req.authUser.username, 'accepted', `Quote accepted: ${quote.title}`);
+ res.json(quote);
+});
+
+// Reject quote
+app.post('/api/quotes/:id/reject', requireAuth, (req, res) => {
+ const quote = quotes.find(q => q.id === req.params.id);
+ if (!quote) return res.status(404).json({ error: 'Quote not found' });
+ 
+ quote.status = 'rejected';
+ quote.rejected_at = new Date().toISOString();
+ 
+ logActivity('quote', quote.id, req.authUser.username, 'rejected', `Quote rejected: ${quote.title}`);
+ res.json(quote);
+});
+
+// Delete quote
+app.delete('/api/quotes/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const index = quotes.findIndex(q => q.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Quote not found' });
+ 
+ const quote = quotes[index];
+ quotes.splice(index, 1);
+ logActivity('quote', quote.id, req.authUser.username, 'deleted', `Deleted quote: ${quote.title}`);
+ res.json({ ok: true });
+});
+
+// Convert quote to job
+app.post('/api/quotes/:id/convert', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const quote = quotes.find(q => q.id === req.params.id);
+ if (!quote) return res.status(404).json({ error: 'Quote not found' });
+ if (quote.status !== 'accepted') return res.status(400).json({ error: 'Only accepted quotes can be converted to jobs' });
+ 
+ // Create a job from the quote
+ const job = {
+   id: nextJobId(),
+   title: quote.title,
+   description: quote.description,
+   status: 'assigned',
+   priority: 'medium',
+   assignedTo: req.body.assignedTo || '',
+   location: req.body.location || '',
+   customerId: quote.customerId,
+   scheduledDate: req.body.scheduledDate || '',
+   category: 'installation',
+   notes: `Created from quote: ${quote.id}`,
+   created_at: new Date().toISOString(),
+   updated_at: new Date().toISOString(),
+   partsUsed: [],
+   materialsUsed: [],
+   worklog: [],
+   technicianNotes: '',
+   completionNotes: '',
+   projectId: null,
+   taskId: null
+ };
+ 
+ jobs.unshift(normalizeJob(job));
+ quote.jobId = job.id;
+ 
+ logActivity('job', job.id, req.authUser.username, 'created', `Created job from quote ${quote.id}: ${job.title}`);
+ res.status(201).json({ job, quote });
+});
+
+// ============== RECURRING JOBS API ENDPOINTS =============
+
+// Get all recurring jobs
+app.get('/api/recurring', requireAuth, (req, res) => {
+ res.json(recurringJobs);
+});
+
+// Get recurring job by customer
+app.get('/api/recurring/customer/:customerId', requireAuth, (req, res) => {
+ const customerRecurring = recurringJobs.filter(r => r.customerId === req.params.customerId);
+ res.json(customerRecurring);
+});
+
+// Get single recurring job
+app.get('/api/recurring/:id', requireAuth, (req, res) => {
+ const recurring = recurringJobs.find(r => r.id === req.params.id);
+ if (!recurring) return res.status(404).json({ error: 'Recurring job not found' });
+ res.json(recurring);
+});
+
+// Create recurring job
+app.post('/api/recurring', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const { customerId, title, description, frequency, interval_value, interval_unit, start_date, end_date, assignedTo, category, priority, estimated_duration_hours } = req.body;
+ 
+ if (!customerId || !title || !frequency) return res.status(400).json({ error: 'Customer ID, title, and frequency are required' });
+ 
+ const newRecurring = {
+   id: `REC-${String(recurringJobs.length + 1).padStart(3, '0')}`,
+   customerId,
+   title,
+   description: description || '',
+   frequency,
+   interval_value: interval_value || 1,
+   interval_unit: interval_unit || 'months',
+   start_date: start_date || null,
+   end_date: end_date || null,
+   status: 'active',
+   assignedTo: assignedTo || '',
+   category: category || 'maintenance',
+   priority: priority || 'medium',
+   estimated_duration_hours: estimated_duration_hours || 1,
+   created_by: req.authUser.username,
+   created_at: new Date().toISOString()
+ };
+ 
+ recurringJobs.push(newRecurring);
+ logActivity('recurring', newRecurring.id, req.authUser.username, 'created', `Created recurring job: ${title}`);
+ res.status(201).json(newRecurring);
+});
+
+// Update recurring job
+app.put('/api/recurring/:id', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const recurring = recurringJobs.find(r => r.id === req.params.id);
+ if (!recurring) return res.status(404).json({ error: 'Recurring job not found' });
+ 
+ const { title, description, frequency, interval_value, interval_unit, start_date, end_date, status, assignedTo, category, priority, estimated_duration_hours } = req.body;
+ 
+ if (title !== undefined) recurring.title = title;
+ if (description !== undefined) recurring.description = description;
+ if (frequency !== undefined) recurring.frequency = frequency;
+ if (interval_value !== undefined) recurring.interval_value = interval_value;
+ if (interval_unit !== undefined) recurring.interval_unit = interval_unit;
+ if (start_date !== undefined) recurring.start_date = start_date;
+ if (end_date !== undefined) recurring.end_date = end_date;
+ if (status !== undefined) recurring.status = status;
+ if (assignedTo !== undefined) recurring.assignedTo = assignedTo;
+ if (category !== undefined) recurring.category = category;
+ if (priority !== undefined) recurring.priority = priority;
+ if (estimated_duration_hours !== undefined) recurring.estimated_duration_hours = estimated_duration_hours;
+ 
+ logActivity('recurring', recurring.id, req.authUser.username, 'updated', `Updated recurring job: ${recurring.title}`);
+ res.json(recurring);
+});
+
+// Delete recurring job
+app.delete('/api/recurring/:id', requireAuth, requireRoles(['admin']), (req, res) => {
+ const index = recurringJobs.findIndex(r => r.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Recurring job not found' });
+ 
+ const recurring = recurringJobs[index];
+ recurringJobs.splice(index, 1);
+ logActivity('recurring', recurring.id, req.authUser.username, 'deleted', `Deleted recurring job: ${recurring.title}`);
+ res.json({ ok: true });
+});
+
+// Pause recurring job
+app.post('/api/recurring/:id/pause', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const recurring = recurringJobs.find(r => r.id === req.params.id);
+ if (!recurring) return res.status(404).json({ error: 'Recurring job not found' });
+ 
+ recurring.status = 'paused';
+ logActivity('recurring', recurring.id, req.authUser.username, 'paused', `Paused recurring job: ${recurring.title}`);
+ res.json(recurring);
+});
+
+// Resume recurring job
+app.post('/api/recurring/:id/resume', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const recurring = recurringJobs.find(r => r.id === req.params.id);
+ if (!recurring) return res.status(404).json({ error: 'Recurring job not found' });
+ 
+ recurring.status = 'active';
+ logActivity('recurring', recurring.id, req.authUser.username, 'resumed', `Resumed recurring job: ${recurring.title}`);
+ res.json(recurring);
+});
+
+// Generate next job from recurring
+app.post('/api/recurring/:id/generate', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const recurring = recurringJobs.find(r => r.id === req.params.id);
+ if (!recurring) return res.status(404).json({ error: 'Recurring job not found' });
+ if (recurring.status !== 'active') return res.status(400).json({ error: 'Recurring job is not active' });
+ 
+ const now = new Date();
+ let nextDate = new Date(recurring.start_date);
+ 
+ // Calculate next occurrence based on frequency
+ if (recurring.interval_unit === 'days') {
+   nextDate.setDate(nextDate.getDate() + recurring.interval_value);
+ } else if (recurring.interval_unit === 'weeks') {
+   nextDate.setDate(nextDate.getDate() + (recurring.interval_value * 7));
+ } else if (recurring.interval_unit === 'months') {
+   nextDate.setMonth(nextDate.getMonth() + recurring.interval_value);
+ } else if (recurring.interval_unit === 'years') {
+   nextDate.setFullYear(nextDate.getFullYear() + recurring.interval_value);
+ }
+ 
+ const job = {
+   id: nextJobId(),
+   title: recurring.title,
+   description: recurring.description,
+   status: recurring.assignedTo ? 'assigned' : 'new',
+   priority: recurring.priority,
+   assignedTo: recurring.assignedTo,
+   location: req.body.location || '',
+   customerId: recurring.customerId,
+   scheduledDate: req.body.scheduledDate || nextDate.toISOString().split('T')[0],
+   category: recurring.category,
+   notes: `Generated from recurring job: ${recurring.id}`,
+   created_at: new Date().toISOString(),
+   updated_at: new Date().toISOString(),
+   partsUsed: [],
+   materialsUsed: [],
+   worklog: [],
+   technicianNotes: '',
+   completionNotes: '',
+   projectId: null,
+   taskId: null
+ };
+ 
+ jobs.unshift(normalizeJob(job));
+ logActivity('job', job.id, req.authUser.username, 'created', `Generated job from recurring: ${job.title}`);
+ res.status(201).json(job);
 });
 
 app.listen(PORT, () => {

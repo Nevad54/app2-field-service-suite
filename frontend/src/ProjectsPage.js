@@ -286,55 +286,64 @@ export default function ProjectsPage({ token }) {
       </div>
 
       {showForm && (
-        <form className="form-section" onSubmit={handleSubmit}>
-          <h2>{editingId ? '✏️ Edit Project' : '➕ New Project'}</h2>
-          <div className="form-grid">
-            <div className="form-group full-width">
-              <label>Project Title *</label>
-              <input value={draft.title} onChange={(e) => setDraft(prev => ({ ...prev, title: e.target.value }))} placeholder="Enter project title" required />
+        <div className="modal-backdrop" onClick={cancelForm}>
+          <div className="modal-content modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{editingId ? '✏️ Edit Project' : '➕ New Project'}</h2>
+              <button className="modal-close" onClick={cancelForm}>×</button>
             </div>
-            <div className="form-group full-width">
-              <label>Description</label>
-              <textarea value={draft.description} onChange={(e) => setDraft(prev => ({ ...prev, description: e.target.value }))} placeholder="Project description..." rows={3} />
-            </div>
-            <div className="form-group">
-              <label>Start Date</label>
-              <input type="date" value={draft.start_date} onChange={(e) => setDraft(prev => ({ ...prev, start_date: e.target.value }))} />
-            </div>
-            <div className="form-group">
-              <label>Target Deadline</label>
-              <input type="date" value={draft.end_date} onChange={(e) => setDraft(prev => ({ ...prev, end_date: e.target.value }))} />
-            </div>
+            <form onSubmit={handleSubmit}>
+              <div className="form-section">
+                <div className="form-grid">
+                  <div className="form-group full-width">
+                    <label>Project Title *</label>
+                    <input value={draft.title} onChange={(e) => setDraft(prev => ({ ...prev, title: e.target.value }))} placeholder="Enter project title" required />
+                  </div>
+                  <div className="form-group full-width">
+                    <label>Description</label>
+                    <textarea value={draft.description} onChange={(e) => setDraft(prev => ({ ...prev, description: e.target.value }))} placeholder="Project description..." rows={3} />
+                  </div>
+                  <div className="form-group">
+                    <label>Start Date</label>
+                    <input type="date" value={draft.start_date} onChange={(e) => setDraft(prev => ({ ...prev, start_date: e.target.value }))} />
+                  </div>
+                  <div className="form-group">
+                    <label>Target Deadline</label>
+                    <input type="date" value={draft.end_date} onChange={(e) => setDraft(prev => ({ ...prev, end_date: e.target.value }))} />
+                  </div>
 
-            <div className="form-group">
-              <label>Priority</label>
-              <select value={draft.priority} onChange={(e) => setDraft(prev => ({ ...prev, priority: e.target.value }))}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            {editingId && (
-              <div className="form-group">
-                <label>Status</label>
-                <select value={draft.status} onChange={(e) => setDraft(prev => ({ ...prev, status: e.target.value }))}>
-                  <option value="not_started">Not Started</option>
-                  <option value="planning">Planning</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="active">Active</option>
-                  <option value="on_hold">On Hold</option>
-                  <option value="delayed">Delayed</option>
-                  <option value="completed">Completed</option>
-                </select>
+                  <div className="form-group">
+                    <label>Priority</label>
+                    <select value={draft.priority} onChange={(e) => setDraft(prev => ({ ...prev, priority: e.target.value }))}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  {editingId && (
+                    <div className="form-group">
+                      <label>Status</label>
+                      <select value={draft.status} onChange={(e) => setDraft(prev => ({ ...prev, status: e.target.value }))}>
+                        <option value="not_started">Not Started</option>
+                        <option value="planning">Planning</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="active">Active</option>
+                        <option value="on_hold">On Hold</option>
+                        <option value="delayed">Delayed</option>
+                        <option value="completed">Completed</option>
+                      </select>
 
+                    </div>
+                  )}
+                </div>
+                <div className="form-actions">
+                  <button type="submit" className="btn-primary">{editingId ? 'Update' : 'Create'}</button>
+                  <button type="button" className="btn-secondary" onClick={cancelForm}>Cancel</button>
+                </div>
               </div>
-            )}
+            </form>
           </div>
-          <div className="form-actions">
-            <button type="submit" className="btn-primary">{editingId ? 'Update' : 'Create'}</button>
-            <button type="button" className="btn-secondary" onClick={cancelForm}>Cancel</button>
-          </div>
-        </form>
+        </div>
       )}
 
       {loading ? <p className="loading">Loading projects...</p> : null}
