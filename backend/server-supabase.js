@@ -261,6 +261,18 @@ const startServer = async () => {
         return res.json({ token, user: tokenUser });
     });
 
+    app.get('/api/client/jobs', requireAuth, (req, res) => {
+        if (req.authUser.role !== 'client') return res.status(403).json({ error: 'Forbidden' });
+        const clientJobs = memoryCache.jobs.filter((job) => job.customerId === req.authUser.id);
+        res.json(clientJobs);
+    });
+
+    app.get('/api/client/invoices', requireAuth, (req, res) => {
+        if (req.authUser.role !== 'client') return res.status(403).json({ error: 'Forbidden' });
+        const clientInvoices = memoryCache.invoices.filter((invoice) => invoice.customerId === req.authUser.id);
+        res.json(clientInvoices);
+    });
+
     // ============== CUSTOMERS ENDPOINTS ==============
     app.get('/api/customers', requireAuth, (req, res) => {
         res.json(memoryCache.customers);
@@ -455,18 +467,68 @@ const startServer = async () => {
     app.delete('/api/projects/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
         const index = memoryCache.projects.findIndex(p => p.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Project not found' });
-
+        
         const project = memoryCache.projects[index];
+        const projectTaskIds = memoryCache.tasks
+            .filter(t => t.project_id === req.params.id)
+            .map(t => t.id);
         memoryCache.projects.splice(index, 1);
         memoryCache.tasks = memoryCache.tasks.filter(t => t.project_id !== req.params.id);
-
+        
         await dbInstance.deleteProject(req.params.id);
+        for (const taskId of projectTaskIds) {
+            await dbInstance.deleteTask(taskId);
+        }
         await logActivity('project', project.id, req.authUser.username, 'deleted', `Project ${project.title} deleted`);
         res.json({ ok: true });
     });
 
     app.get('/api/projects/:id/tasks', requireAuth, (req, res) => {
         res.json(memoryCache.tasks.filter(t => t.project_id === req.params.id));
+    });
+
+    // Backward-compatible endpoint used by ProjectsPage modal task form
+    app.post('/api/projects/:id/tasks', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const project = memoryCache.projects.find(p => p.id === req.params.id);
+        if (!project) return res.status(404).json({ error: 'Project not found' });
+
+        const now = new Date().toISOString();
+        const toStatus = (value) => {
+            const normalized = String(value || '').trim().toLowerCase().replace(/-/g, '_');
+            if (normalized === 'pending') return 'not_started';
+            if (normalized === 'inprogress') return 'in_progress';
+            return normalized || 'not_started';
+        };
+
+        const newTask = {
+            id: `task-${Date.now()}`,
+            project_id: req.params.id,
+            parent_task_id: null,
+            name: req.body.name,
+            start_date: req.body.start_date || req.body.startDate || null,
+            end_date: req.body.end_date || req.body.dueDate || null,
+            duration_days: 0,
+            progress_percent: Number(req.body.progress_percent ?? req.body.progress ?? 0),
+            weight: Number(req.body.weight || 1),
+            status: toStatus(req.body.status),
+            sort_order: memoryCache.tasks.filter(t => t.project_id === req.params.id).length + 1,
+            notes: req.body.notes || req.body.description || '',
+            updated_by: req.authUser.username,
+            updated_at: now
+        };
+
+        if (!newTask.name) return res.status(400).json({ error: 'Task name is required' });
+        if (newTask.start_date && newTask.end_date) {
+            const start = new Date(newTask.start_date);
+            const end = new Date(newTask.end_date);
+            const diffDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+            newTask.duration_days = diffDays >= 0 ? diffDays + 1 : 0;
+        }
+
+        memoryCache.tasks.push(newTask);
+        await dbInstance.persistTask(newTask);
+        await logActivity('task', newTask.id, req.authUser.username, 'created', `Task ${newTask.name} created`);
+        res.status(201).json(newTask);
     });
 
     // Planner endpoint - returns project with tasks and summary
@@ -505,7 +567,14 @@ const startServer = async () => {
             overallProgress
         };
         
-        res.json({ project, tasks, summary });
+        // Add progressContribution to each task (each task's contribution = (task_progress * task_weight) / total_weight)
+        const tasksWithContribution = tasks.map(task => {
+            const taskWeight = task.weight || 1;
+            const contribution = totalWeight > 0 ? ((task.progress_percent || 0) * taskWeight) / totalWeight : 0;
+            return { ...task, progressContribution: contribution };
+        });
+        
+        res.json({ project, tasks: tasksWithContribution, summary });
     });
 
     // Task endpoints
@@ -530,6 +599,7 @@ const startServer = async () => {
         if (index === -1) return res.status(404).json({ error: 'Task not found' });
         
         memoryCache.tasks.splice(index, 1);
+        await dbInstance.deleteTask(req.params.id);
         res.json({ ok: true });
     });
 
@@ -588,7 +658,7 @@ const startServer = async () => {
         res.json(task);
     });
 
-    // PATCH endpoint for task dates (used by frontend table)
+    // PATCH endpoint for task dates (used by frontend table) - any authenticated user
     app.patch('/api/tasks/:id/dates', requireAuth, async (req, res) => {
         const index = memoryCache.tasks.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Task not found' });
@@ -598,6 +668,16 @@ const startServer = async () => {
         
         if (start_date !== undefined) task.start_date = start_date;
         if (end_date !== undefined) task.end_date = end_date;
+        
+        // Calculate duration_days based on start and end dates
+        if (task.start_date && task.end_date) {
+            const start = new Date(task.start_date);
+            const end = new Date(task.end_date);
+            const diffTime = end - start;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            task.duration_days = diffDays >= 0 ? diffDays + 1 : 0;
+        }
+        
         task.updated_at = new Date().toISOString();
         
         memoryCache.tasks[index] = task;
@@ -649,6 +729,37 @@ const startServer = async () => {
         res.json(userNotifications);
     });
 
+    app.post('/api/notifications', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const notification = {
+            id: `notif-${Date.now()}`,
+            user_id: req.body.user_id || 'all',
+            type: req.body.type || 'info',
+            title: req.body.title || 'Notification',
+            message: req.body.message || '',
+            read: false,
+            created_at: new Date().toISOString()
+        };
+
+        memoryCache.notifications.unshift(notification);
+        const { error } = await dbInstance.supabase.from('notifications').upsert(notification);
+        if (error) return res.status(500).json({ error: error.message });
+        res.status(201).json(notification);
+    });
+
+    app.patch('/api/notifications/:id/read', requireAuth, async (req, res) => {
+        const index = memoryCache.notifications.findIndex(n => n.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Notification not found' });
+
+        const notification = { ...memoryCache.notifications[index], read: true };
+        memoryCache.notifications[index] = notification;
+        const { error } = await dbInstance.supabase
+            .from('notifications')
+            .update({ read: true })
+            .eq('id', req.params.id);
+        if (error) return res.status(500).json({ error: error.message });
+        res.json(notification);
+    });
+
     app.get('/api/dashboard/summary', requireAuth, (req, res) => {
         const jobs = memoryCache.jobs;
         const invoices = memoryCache.invoices;
@@ -694,6 +805,80 @@ const startServer = async () => {
         res.json(Array.from(allSkills));
     });
 
+    // Create technician
+    app.post('/api/technicians', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const { name, email, phone, skills, hourly_rate, certifications, availability, status, color, hire_date, notes } = req.body;
+        if (!name) return res.status(400).json({ error: 'Technician name is required' });
+
+        const newTechnician = {
+            id: `tech-${Date.now()}`,
+            name,
+            email: email || '',
+            phone: phone || '',
+            skills: skills || [],
+            hourly_rate: hourly_rate || 50,
+            certifications: certifications || [],
+            availability: availability || {
+                monday: { start: '08:00', end: '17:00' },
+                tuesday: { start: '08:00', end: '17:00' },
+                wednesday: { start: '08:00', end: '17:00' },
+                thursday: { start: '08:00', end: '17:00' },
+                friday: { start: '08:00', end: '17:00' },
+                saturday: null,
+                sunday: null
+            },
+            status: status || 'active',
+            color: color || '#0ea5e9',
+            hire_date: hire_date || null,
+            notes: notes || '',
+            role: 'technician',
+            created_at: new Date().toISOString()
+        };
+
+        memoryCache.technicians.push(newTechnician);
+        await dbInstance.persistTechnician(newTechnician);
+        await logActivity('technician', newTechnician.id, req.authUser.username, 'created', `New technician added: ${name}`);
+        res.status(201).json(newTechnician);
+    });
+
+    // Update technician
+    app.put('/api/technicians/:id', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const index = memoryCache.technicians.findIndex(t => t.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Technician not found' });
+
+        const { name, email, phone, skills, hourly_rate, certifications, availability, status, color, hire_date, notes } = req.body;
+        const technician = { ...memoryCache.technicians[index] };
+
+        if (name) technician.name = name;
+        if (email !== undefined) technician.email = email;
+        if (phone !== undefined) technician.phone = phone;
+        if (skills) technician.skills = skills;
+        if (hourly_rate !== undefined) technician.hourly_rate = hourly_rate;
+        if (certifications) technician.certifications = certifications;
+        if (availability) technician.availability = availability;
+        if (status) technician.status = status;
+        if (color) technician.color = color;
+        if (hire_date !== undefined) technician.hire_date = hire_date;
+        if (notes !== undefined) technician.notes = notes;
+
+        memoryCache.technicians[index] = technician;
+        await dbInstance.persistTechnician(technician);
+        await logActivity('technician', technician.id, req.authUser.username, 'updated', `Technician ${technician.name} updated`);
+        res.json(technician);
+    });
+
+    // Delete technician
+    app.delete('/api/technicians/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+        const index = memoryCache.technicians.findIndex(t => t.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Technician not found' });
+
+        const technician = memoryCache.technicians[index];
+        memoryCache.technicians.splice(index, 1);
+        await dbInstance.deleteTechnician(req.params.id);
+        await logActivity('technician', technician.id, req.authUser.username, 'deleted', `Technician ${technician.name} deleted`);
+        res.json({ ok: true });
+    });
+
     // ============== SCHEDULE ENDPOINT ==============
     app.get('/api/schedule', requireAuth, (req, res) => {
         const scheduledJobs = memoryCache.jobs.filter(job => job.scheduledDate);
@@ -723,6 +908,7 @@ const startServer = async () => {
         };
 
         memoryCache.inventory.push(newItem);
+        await dbInstance.persistInventory(newItem);
         res.status(201).json(newItem);
     });
 
@@ -732,6 +918,7 @@ const startServer = async () => {
 
         const item = { ...memoryCache.inventory[index], ...req.body };
         memoryCache.inventory[index] = item;
+        await dbInstance.persistInventory(item);
         res.json(item);
     });
 
@@ -739,7 +926,9 @@ const startServer = async () => {
         const index = memoryCache.inventory.findIndex(i => i.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Item not found' });
 
+        const item = memoryCache.inventory[index];
         memoryCache.inventory.splice(index, 1);
+        await dbInstance.deleteInventory(item.id);
         res.json({ ok: true });
     });
 
@@ -766,6 +955,7 @@ const startServer = async () => {
         };
 
         memoryCache.equipment.push(newEquipment);
+        await dbInstance.persistEquipment(newEquipment);
         res.status(201).json(newEquipment);
     });
 
@@ -775,6 +965,7 @@ const startServer = async () => {
 
         const item = { ...memoryCache.equipment[index], ...req.body };
         memoryCache.equipment[index] = item;
+        await dbInstance.persistEquipment(item);
         res.json(item);
     });
 
@@ -782,7 +973,9 @@ const startServer = async () => {
         const index = memoryCache.equipment.findIndex(e => e.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Equipment not found' });
 
+        const item = memoryCache.equipment[index];
         memoryCache.equipment.splice(index, 1);
+        await dbInstance.deleteEquipment(item.id);
         res.json({ ok: true });
     });
 
@@ -809,6 +1002,7 @@ const startServer = async () => {
         };
 
         memoryCache.quotes.push(newQuote);
+        await dbInstance.persistQuote(newQuote);
         res.status(201).json(newQuote);
     });
 
@@ -818,6 +1012,7 @@ const startServer = async () => {
 
         const quote = { ...memoryCache.quotes[index], ...req.body };
         memoryCache.quotes[index] = quote;
+        await dbInstance.persistQuote(quote);
         res.json(quote);
     });
 
@@ -825,8 +1020,92 @@ const startServer = async () => {
         const index = memoryCache.quotes.findIndex(q => q.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Quote not found' });
 
+        const quote = memoryCache.quotes[index];
         memoryCache.quotes.splice(index, 1);
+        await dbInstance.deleteQuote(quote.id);
         res.json({ ok: true });
+    });
+
+    // Accept quote
+    app.post('/api/quotes/:id/accept', requireAuth, async (req, res) => {
+        const index = memoryCache.quotes.findIndex(q => q.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Quote not found' });
+
+        const quote = { ...memoryCache.quotes[index] };
+        quote.status = 'accepted';
+        quote.accepted_at = new Date().toISOString();
+        quote.accepted_by = req.authUser.username;
+        memoryCache.quotes[index] = quote;
+        await dbInstance.persistQuote(quote);
+        
+        await logActivity('quote', quote.id, req.authUser.username, 'accepted', `Quote accepted: ${quote.title}`);
+        res.json(quote);
+    });
+
+    // Reject quote
+    app.post('/api/quotes/:id/reject', requireAuth, async (req, res) => {
+        const index = memoryCache.quotes.findIndex(q => q.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Quote not found' });
+
+        const quote = { ...memoryCache.quotes[index] };
+        quote.status = 'rejected';
+        quote.rejected_at = new Date().toISOString();
+        quote.rejected_by = req.authUser.username;
+        memoryCache.quotes[index] = quote;
+        await dbInstance.persistQuote(quote);
+        
+        await logActivity('quote', quote.id, req.authUser.username, 'rejected', `Quote rejected: ${quote.title}`);
+        res.json(quote);
+    });
+
+    // Convert quote to job
+    app.post('/api/quotes/:id/convert', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const index = memoryCache.quotes.findIndex(q => q.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Quote not found' });
+
+        const quote = memoryCache.quotes[index];
+        if (quote.status !== 'accepted') {
+            return res.status(400).json({ error: 'Only accepted quotes can be converted to jobs' });
+        }
+
+        const { scheduledDate } = req.body;
+        const customer = memoryCache.customers.find(c => c.id === quote.customerId);
+        
+        const now = new Date().toISOString();
+        const job = {
+            id: nextJobId(),
+            title: `From Quote: ${quote.title}`,
+            status: 'new',
+            priority: 'medium',
+            assignedTo: '',
+            location: customer?.address || '',
+            customerId: quote.customerId,
+            scheduledDate: scheduledDate || '',
+            category: 'quote-converted',
+            notes: `Converted from quote ${quote.id}. Description: ${quote.description || 'N/A'}`,
+            created_at: now,
+            updated_at: now,
+            partsUsed: [],
+            materialsUsed: [],
+            worklog: [],
+            technicianNotes: '',
+            completionNotes: '',
+            projectId: null,
+            taskId: null,
+            photos: [],
+            quoteId: quote.id
+        };
+
+        memoryCache.jobs.unshift(job);
+        await dbInstance.persistJob(job);
+        
+        // Update quote with job reference
+        quote.jobId = job.id;
+        memoryCache.quotes[index] = quote;
+        await dbInstance.persistQuote(quote);
+        
+        await logActivity('job', job.id, req.authUser.username, 'created', `Created job from quote: ${quote.title}`);
+        res.status(201).json(job);
     });
 
     // ============== INVOICES ENDPOINTS ==============
@@ -849,6 +1128,7 @@ const startServer = async () => {
         };
 
         memoryCache.invoices.push(newInvoice);
+        await dbInstance.persistInvoice(newInvoice);
         res.status(201).json(newInvoice);
     });
 
@@ -858,6 +1138,7 @@ const startServer = async () => {
 
         const invoice = { ...memoryCache.invoices[index], ...req.body };
         memoryCache.invoices[index] = invoice;
+        await dbInstance.persistInvoice(invoice);
         res.json(invoice);
     });
 

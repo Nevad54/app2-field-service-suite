@@ -50,15 +50,17 @@ export default function ProjectsPage({ token }) {
     assignedTo: '',
     startDate: '',
     dueDate: '',
-    status: 'pending',
+    status: 'not_started',
     progress: 0,
     notes: '',
   });
 
-  // Debug: Log token presence
-  useEffect(() => {
-    console.log('ProjectsPage received token:', token ? 'Token present' : 'NO TOKEN');
-  }, [token]);
+  const normalizeTaskStatus = (status) => {
+    const normalized = String(status || '').trim().toLowerCase().replace(/-/g, '_');
+    if (normalized === 'pending') return 'not_started';
+    if (normalized === 'inprogress') return 'in_progress';
+    return normalized || 'not_started';
+  };
 
   const fetchProjects = useCallback(async () => {
     if (!token) {
@@ -69,12 +71,9 @@ export default function ProjectsPage({ token }) {
     setLoading(true);
     setError('');
     try {
-      console.log('Fetching projects with token...');
       const data = await apiFetch('/api/projects', { token });
-      console.log('Projects loaded:', data);
       setProjects(Array.isArray(data) ? data : []);
     } catch (e) {
-      console.error('Failed to load projects:', e);
       setError(e.message || 'Failed to load projects');
     } finally {
       setLoading(false);
@@ -86,7 +85,7 @@ export default function ProjectsPage({ token }) {
       const data = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/tasks`, { token });
       setTasks(prev => ({ ...prev, [projectId]: Array.isArray(data) ? data : [] }));
     } catch (e) {
-      console.error('Failed to load tasks:', e);
+      // Keep page usable if task fetch fails for one project
     }
   }, [token]);
 
@@ -124,8 +123,21 @@ export default function ProjectsPage({ token }) {
     if (!selectedProject) return;
     setError('');
     try {
-      await apiFetch(`/api/projects/${encodeURIComponent(selectedProject.id)}/tasks`, { token, method: 'POST', body: taskDraft });
-      setTaskDraft({ name: '', description: '', assignedTo: '', startDate: '', dueDate: '', status: 'pending', progress: 0, notes: '' });
+      await apiFetch('/api/tasks', {
+        token,
+        method: 'POST',
+        body: {
+          project_id: selectedProject.id,
+          name: taskDraft.name,
+          notes: taskDraft.description || taskDraft.notes || '',
+          start_date: taskDraft.startDate || null,
+          end_date: taskDraft.dueDate || null,
+          status: normalizeTaskStatus(taskDraft.status),
+          progress_percent: Number(taskDraft.progress || 0),
+          weight: 1
+        }
+      });
+      setTaskDraft({ name: '', description: '', assignedTo: '', startDate: '', dueDate: '', status: 'not_started', progress: 0, notes: '' });
       setShowTaskForm(false);
       await fetchTasks(selectedProject.id);
       await fetchProjects();
@@ -150,7 +162,14 @@ export default function ProjectsPage({ token }) {
 
   const handleTaskUpdate = async (taskId, updates) => {
     try {
-      await apiFetch(`/api/tasks/${encodeURIComponent(taskId)}`, { token, method: 'PUT', body: updates });
+      const payload = {};
+      if (Object.prototype.hasOwnProperty.call(updates, 'status')) {
+        payload.status = normalizeTaskStatus(updates.status);
+      }
+      if (Object.prototype.hasOwnProperty.call(updates, 'progress')) {
+        payload.progress_percent = Number(updates.progress || 0);
+      }
+      await apiFetch(`/api/tasks/${encodeURIComponent(taskId)}`, { token, method: 'PUT', body: payload });
       if (selectedProject) {
         await fetchTasks(selectedProject.id);
         await fetchProjects();
@@ -179,7 +198,7 @@ export default function ProjectsPage({ token }) {
   };
 
   const cancelTaskForm = () => {
-    setTaskDraft({ name: '', description: '', assignedTo: '', startDate: '', dueDate: '', status: 'pending', progress: 0, notes: '' });
+    setTaskDraft({ name: '', description: '', assignedTo: '', startDate: '', dueDate: '', status: 'not_started', progress: 0, notes: '' });
     setShowTaskForm(false);
   };
 
@@ -521,8 +540,8 @@ export default function ProjectsPage({ token }) {
                       <div className="form-group">
                         <label>Status</label>
                         <select value={taskDraft.status} onChange={(e) => setTaskDraft(prev => ({ ...prev, status: e.target.value }))}>
-                          <option value="pending">Pending</option>
-                          <option value="in-progress">In Progress</option>
+                          <option value="not_started">Not Started</option>
+                          <option value="in_progress">In Progress</option>
                           <option value="completed">Completed</option>
                         </select>
                       </div>
@@ -539,46 +558,51 @@ export default function ProjectsPage({ token }) {
                 )}
                 <div className="tasks-list">
                   {(tasks[selectedProject.id] || []).map(task => (
+                    (() => {
+                      const normalizedStatus = normalizeTaskStatus(task.status);
+                      const progressValue = Number(task.progress_percent ?? task.progress ?? 0);
+                      const dueDateValue = task.end_date || task.dueDate;
+                      return (
                     <div key={task.id} className={`task-item ${task.status}`}>
                       <div className="task-header">
                         <h4>{task.name}</h4>
                         <span className={`status-badge ${getTaskStatusClass(task.status)}`}>{getTaskStatusLabel(task.status)}</span>
                       </div>
-                      {task.description && <p>{task.description}</p>}
+                      {(task.description || task.notes) && <p>{task.description || task.notes}</p>}
                       <div className="task-meta">
-                        <span>📅 {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date'}</span>
-                        <span>📊 {task.progress}%</span>
+                        <span>📅 {dueDateValue ? new Date(dueDateValue).toLocaleDateString() : 'No due date'}</span>
+                        <span>📊 {progressValue}%</span>
                       </div>
                       <div className="task-progress">
-                        <div className="progress-bar"><div className="progress-fill" style={{ width: `${task.progress}%` }}></div></div>
+                        <div className="progress-bar"><div className="progress-fill" style={{ width: `${progressValue}%` }}></div></div>
                       </div>
                       <div className="task-actions">
                         <button
                           className="btn-secondary"
                           onClick={() => {
-                            const normalized = String(task.status || '').trim().toLowerCase().replace(/-/g, '_');
-                            const nextStatus = task.progress === 100
-                              ? 'pending'
-                              : (normalized === 'pending' || normalized === 'not_started')
-                                ? 'in-progress'
-                                : task.progress === 75
+                            const nextStatus = progressValue === 100
+                              ? 'not_started'
+                              : (normalizedStatus === 'not_started')
+                                ? 'in_progress'
+                                : progressValue === 75
                                   ? 'completed'
                                   : task.status;
                             handleTaskUpdate(task.id, {
-                              progress: task.progress === 100 ? 0 : task.progress + 25,
+                              progress: progressValue === 100 ? 0 : progressValue + 25,
                               status: nextStatus
                             });
                           }}
                         >
                           {(() => {
-                            const normalized = String(task.status || '').trim().toLowerCase().replace(/-/g, '_');
-                            if (normalized === 'pending' || normalized === 'not_started') return '▶️ Start';
-                            if (normalized === 'in_progress') return '✅ Complete';
+                            if (normalizedStatus === 'not_started') return '▶️ Start';
+                            if (normalizedStatus === 'in_progress') return '✅ Complete';
                             return '🔄 Reopen';
                           })()}
                         </button>
                       </div>
                     </div>
+                    );
+                    })()
                   ))}
                   {(!tasks[selectedProject.id] || tasks[selectedProject.id].length === 0) && <p className="empty-state">No tasks yet.</p>}
                 </div>

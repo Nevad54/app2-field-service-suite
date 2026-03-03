@@ -17,6 +17,53 @@ app.use('/uploads', express.static(UPLOADS_DIR));
 fs.mkdirSync(JOB_UPLOADS_DIR, { recursive: true });
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+// ============== DATABASE INITIALIZATION ==============
+const { createDb } = require('./db');
+const db = createDb(__dirname);
+
+// Seed data for initial bootstrap
+const seedData = require('./seed-data');
+let dbData = null;
+
+// Initialize database and load data
+async function initDatabase() {
+  try {
+    dbData = await db.bootstrap(seedData);
+    console.log('Database initialized and seeded');
+    
+    // Load data into memory arrays
+    users = dbData.users || [];
+    customers = dbData.customers || [];
+    jobs = dbData.jobs || [];
+    invoices = dbData.invoices || [];
+    projects = dbData.projects || [];
+    tasks = dbData.tasks || [];
+    activityLogs = dbData.activityLogs || [];
+    notifications = dbData.notifications || [];
+    technicians = seedData.technicians || [];
+    inventory = seedData.inventory || [];
+    equipment = seedData.equipment || [];
+    quotes = seedData.quotes || [];
+    recurringJobs = seedData.recurringJobs || [];
+  } catch (err) {
+    console.error('Database initialization error:', err.message);
+    // Fall back to seed data
+    users = seedData.users;
+    customers = seedData.customers;
+    jobs = seedData.jobs.map(normalizeJob);
+    invoices = seedData.invoices;
+    projects = seedData.projects;
+    tasks = seedData.tasks;
+    activityLogs = seedData.activityLogs;
+    notifications = seedData.notifications;
+    technicians = seedData.technicians;
+    inventory = seedData.inventory;
+    equipment = seedData.equipment;
+    quotes = seedData.quotes;
+    recurringJobs = seedData.recurringJobs;
+  }
+}
+
 // ============== USERS ==============
 let users = [
  { id: 'u-admin', username: 'admin', password: '1111', role: 'admin' },
@@ -1589,6 +1636,27 @@ app.get('/api/notifications', requireAuth, (req, res) => {
  res.json(userNotifications);
 });
 
+app.post('/api/notifications', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const notification = {
+   id: `notif-${Date.now()}`,
+   user_id: req.body.user_id || 'all',
+   type: req.body.type || 'info',
+   title: req.body.title || 'Notification',
+   message: req.body.message || '',
+   read: false,
+   created_at: new Date().toISOString(),
+ };
+ notifications.unshift(notification);
+ return res.status(201).json(notification);
+});
+
+app.patch('/api/notifications/:id/read', requireAuth, (req, res) => {
+ const index = notifications.findIndex((n) => n.id === req.params.id);
+ if (index === -1) return res.status(404).json({ error: 'Notification not found' });
+ notifications[index] = { ...notifications[index], read: true };
+ return res.json(notifications[index]);
+});
+
 // ============== DASHBOARD SUMMARY ==============
 app.get('/api/dashboard/summary', requireAuth, (req, res) => {
  const total = jobs.length;
@@ -1721,6 +1789,48 @@ app.delete('/api/projects/:id', requireAuth, requireRoles(['admin']), (req, res)
 app.get('/api/projects/:id/tasks', requireAuth, (req, res) => {
  const projectTasks = tasks.filter(t => t.project_id === req.params.id);
  res.json(projectTasks);
+});
+
+// Compatibility endpoint for project-scoped task creation
+app.post('/api/projects/:id/tasks', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+ const project = projects.find((p) => p.id === req.params.id);
+ if (!project) return res.status(404).json({ error: 'Project not found' });
+
+ const name = String(req.body.name || '').trim();
+ if (!name) return res.status(400).json({ error: 'Task name is required' });
+
+ const progress = Number(req.body.progress_percent ?? req.body.progress ?? 0);
+ const rawStatus = String(req.body.status || '').trim().toLowerCase().replace(/-/g, '_');
+ const normalizedStatus = rawStatus === 'pending' ? 'not_started' : rawStatus;
+ const startDate = req.body.start_date || req.body.startDate || null;
+ const endDate = req.body.end_date || req.body.dueDate || null;
+
+ const newTask = {
+   id: `task-${Date.now()}`,
+   project_id: req.params.id,
+   parent_task_id: null,
+   name,
+   start_date: startDate,
+   end_date: endDate,
+   duration_days: calculateDuration(startDate, endDate),
+   progress_percent: Math.min(100, Math.max(0, progress)),
+   weight: Number(req.body.weight || 1),
+   status: normalizedStatus || calculateTaskStatus(progress, endDate),
+   sort_order: tasks.filter((t) => t.project_id === req.params.id).length + 1,
+   notes: req.body.notes || req.body.description || '',
+   assignee: req.body.assignee || req.body.assignedTo || '',
+   estimated_cost: Number(req.body.estimated_cost || 0),
+   actual_cost: Number(req.body.actual_cost || 0),
+   dependency_ids: Array.isArray(req.body.dependency_ids) ? req.body.dependency_ids : [],
+   is_milestone: Boolean(req.body.is_milestone),
+   updated_by: req.authUser.username,
+   updated_at: new Date().toISOString(),
+ };
+
+ tasks.push(newTask);
+ recalculateProject(req.params.id);
+ logActivity('task', newTask.id, req.authUser.username, 'created', `Created task: ${newTask.name}`);
+ return res.status(201).json(newTask);
 });
 
 // Create task
@@ -2532,6 +2642,9 @@ app.post('/api/recurring/:id/generate', requireAuth, requireRoles(['admin', 'dis
  res.status(201).json(job);
 });
 
-app.listen(PORT, () => {
- console.log(`App 2 backend running on http://localhost:${PORT}`);
+// Initialize database and start server
+initDatabase().then(() => {
+  app.listen(PORT, () => {
+    console.log(`App 2 backend running on http://localhost:${PORT}`);
+  });
 });

@@ -80,7 +80,6 @@ const formatShortDate = (dateStr) => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 const toIsoDate = (date) => {
-  // Create a timezone-safe date string
   const d = new Date(date);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -176,7 +175,6 @@ export default function ProjectPlanner({ token }) {
   const [viewMode, setViewMode] = useState('table');
   const [timelineScale, setTimelineScale] = useState('week');
   const [hourlyFocusDate, setHourlyFocusDate] = useState('');
-  const [editingCell, setEditingCell] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'sort_order', direction: 'asc' });
   const [showActivities, setShowActivities] = useState(false);
   const [calendarCursor, setCalendarCursor] = useState(() => {
@@ -186,12 +184,7 @@ export default function ProjectPlanner({ token }) {
   
   // Timeline View Enhancements
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [hoveredTask, setHoveredTask] = useState(null);
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
-  const [editingTimelineTask, setEditingTimelineTask] = useState(null);
   const [timelineScrollPosition, setTimelineScrollPosition] = useState(0);
-  const [minimapViewport, setMinimapViewport] = useState({ start: 0, end: 100 });
-  const [timelineRef, setTimelineRef] = useState(null);
   const [todayPosition, setTodayPosition] = useState(null);
   const timelineScrollRef = useRef(null);
   const lastTimelineExtendAtRef = useRef(0);
@@ -238,12 +231,10 @@ export default function ProjectPlanner({ token }) {
 
   useEffect(() => {
     if (viewMode !== 'timeline') return;
-    // Always reinitialize around today when entering timeline or changing scale
     initializeTimelineWindowAroundToday();
-    // Defer setting shouldScrollToToday to ensure timelineColumns updates first
     const timeout = setTimeout(() => setShouldScrollToToday(true), 0);
     return () => clearTimeout(timeout);
-  }, [viewMode, timelineScale]);
+  }, [viewMode, timelineScale, initializeTimelineWindowAroundToday]);
 
   // Zoom handlers
   const handleZoomIn = () => setZoomLevel(prev => Math.min(prev + 0.25, 2));
@@ -391,11 +382,23 @@ export default function ProjectPlanner({ token }) {
 
   const updateTaskProgress = async (taskId, progress) => {
     try {
-      const updated = await apiFetch(`/api/tasks/${taskId}/progress`, {
-        token,
+      console.log('Updating task progress:', taskId, progress);
+      const response = await fetch(`/api/tasks/${taskId}/progress`, {
         method: 'PATCH',
-        body: { progress_percent: progress }
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ progress_percent: progress })
       });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed: ${response.status}`);
+      }
+      
+      const updated = await response.json();
+      console.log('Task progress updated:', updated);
       
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updated } : t));
       
@@ -405,20 +408,24 @@ export default function ProjectPlanner({ token }) {
         setSummary(plannerData.summary);
       }
     } catch (err) {
+      console.error('Error updating task progress:', err);
       setError(err.message);
     }
   };
 
   const updateTaskDates = async (taskId, startDate, endDate) => {
     try {
+      console.log('Updating task dates:', { taskId, startDate, endDate });
       const updated = await apiFetch(`/api/tasks/${taskId}/dates`, {
         token,
         method: 'PATCH',
         body: { start_date: startDate, end_date: endDate }
       });
       
+      console.log('Task dates updated successfully:', updated);
       setTasks(prev => prev.map(t => t.id === taskId ? { ...t, ...updated } : t));
     } catch (err) {
+      console.error('Error updating task dates:', err);
       setError(err.message);
     }
   };
@@ -749,11 +756,8 @@ export default function ProjectPlanner({ token }) {
     const rangeEnd = new Date(timelineRange.end);
 
     if (timelineScale === 'hour') {
-      // Show a week (7 days) of hourly view for broader scope
       const focus = hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
-      // Start from 3 days before the focus date to show past, present, and future
       const start = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate() - 7, 0, 0, 0, 0);
-      // Show 14 days (336 hours) - consistent with daily showing 90 days
       for (let h = 0; h < 336; h += 1) {
         const slotStart = new Date(start.getTime() + h * 60 * 60 * 1000);
         const slotEnd = new Date(slotStart.getTime() + 60 * 60 * 1000);
@@ -777,7 +781,6 @@ export default function ProjectPlanner({ token }) {
     const el = e.currentTarget;
     setTimelineScrollPosition(el.scrollLeft);
 
-    // Persist the centered column/date (debounced)
     if (persistCenterTimerRef.current) {
       window.clearTimeout(persistCenterTimerRef.current);
     }
@@ -825,7 +828,7 @@ export default function ProjectPlanner({ token }) {
       const newEnd = addDays(timelineWindow.end, extendDays);
       setTimelineWindow(prev => ({ ...prev, end: newEnd }));
     }
-  }, [timelineWindow, timelineScale, zoomLevel]);
+  }, [timelineWindow, timelineScale, zoomLevel, timelineColumns]);
 
   const timelineColWidthPx = useMemo(() => {
     const base = timelineScale === 'hour' ? 64 : 90;
@@ -840,7 +843,6 @@ export default function ProjectPlanner({ token }) {
       return hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
     }
     const colWidth = timelineColWidthPx || 90;
-    // Use center of viewport, not left edge
     const scrollContainer = timelineScrollRef.current;
     const effectiveScrollLeft = scrollContainer ? scrollContainer.scrollLeft : (timelineScrollPosition || 0);
     const viewportCenter = effectiveScrollLeft + (scrollContainer?.clientWidth || 800) / 2;
@@ -850,10 +852,7 @@ export default function ProjectPlanner({ token }) {
 
   const timelineHeaderLabel = useMemo(() => {
     if (!timelineAnchorDate) return '';
-    if (timelineScale === 'day') {
-      return timelineAnchorDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-    }
-    if (timelineScale === 'week') {
+    if (timelineScale === 'day' || timelineScale === 'week') {
       return timelineAnchorDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
     if (timelineScale === 'hour') {
@@ -862,7 +861,7 @@ export default function ProjectPlanner({ token }) {
     return '';
   }, [timelineAnchorDate, timelineScale]);
 
-  // Calculate today marker (pixel-based so it stays correct with fixed-width columns)
+  // Calculate today marker
   useEffect(() => {
     if (timelineColumns && timelineColumns.length > 0 && timelineRange) {
       const today = new Date();
@@ -894,7 +893,7 @@ export default function ProjectPlanner({ token }) {
     }
   }, [timelineColumns, timelineRange, timelineScale, hourlyFocusDate, timelineColWidthPx]);
 
-  // Auto-scroll to today when entering Timeline or changing scale (after columns are ready)
+  // Auto-scroll to today
   useEffect(() => {
     if (viewMode !== 'timeline') return;
     if (!shouldScrollToToday) return;
@@ -907,20 +906,14 @@ export default function ProjectPlanner({ token }) {
 
     let scrollLeft;
     if (timelineScale === 'hour') {
-      // For hourly view, scroll to current hour centered in the viewport
       const focus = hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
       const dayStart = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate(), 0, 0, 0, 0).getTime();
-      
-      // Calculate position based on current time of day
       const currentHour = today.getHours();
       const currentMinute = today.getMinutes();
       const hourWidth = colWidth;
-      
-      // Position based on time (each hour = colWidth pixels)
       const leftPx = (currentHour * hourWidth) + (currentMinute / 60) * hourWidth;
       scrollLeft = leftPx - (el.clientWidth / 2);
     } else {
-      // For week/day view, scroll to today centered
       const stepMs = timelineScale === 'week' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
       const rangeStartMs = new Date(timelineColumns[0].start).getTime();
       const idx = Math.floor((today.getTime() - rangeStartMs) / stepMs);
@@ -1009,22 +1002,17 @@ export default function ProjectPlanner({ token }) {
     if (timelineScale === 'hour') {
       const colWidth = timelineColWidthPx || 64;
       const focus = hourlyFocusDate ? new Date(hourlyFocusDate) : new Date();
-      // Start from 3 days before the focus date (matching the 7-day view)
       const viewStart = new Date(focus.getFullYear(), focus.getMonth(), focus.getDate() - 3, 0, 0, 0, 0).getTime();
-      const viewEnd = viewStart + 336 * 60 * 60 * 1000; // 14 days = 336 hours
+      const viewEnd = viewStart + 336 * 60 * 60 * 1000;
 
-      // If the task is outside the visible 7-day range, don't show it
       if (endMs <= viewStart || startMs >= viewEnd) return null;
       
-      // Calculate actual overlap with the visible range
       const overlapStart = Math.max(startMs, viewStart);
       const overlapEnd = Math.min(endMs, viewEnd);
       const overlapDurationMs = overlapEnd - overlapStart;
       
-      // Calculate position based on task start time relative to view start
       const taskStartOffset = startMs - viewStart;
       
-      // Use fixed pixel widths per hour for consistency
       const hourWidth = colWidth;
       const left = (taskStartOffset / (24 * 60 * 60 * 1000)) * (24 * hourWidth);
       const width = Math.max(hourWidth / 2, (overlapDurationMs / (24 * 60 * 60 * 1000)) * (24 * hourWidth));
@@ -1041,7 +1029,6 @@ export default function ProjectPlanner({ token }) {
 
     return { left, width, unit: 'px' };
   };
-
 
   // Render calendar view
   const renderCalendarView = () => {
@@ -1400,7 +1387,7 @@ export default function ProjectPlanner({ token }) {
             </div>
           )}
 
-{/* Timeline View */}
+          {/* Timeline View */}
           {viewMode === 'timeline' && (
             <div className="timeline-container">
               <div className="timeline-header">
@@ -1583,7 +1570,6 @@ export default function ProjectPlanner({ token }) {
               </div>
             </div>
           )}
-
 
           {/* Calendar View */}
           {viewMode === 'calendar' && renderCalendarView()}

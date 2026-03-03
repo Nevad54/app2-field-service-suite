@@ -310,7 +310,7 @@ body {
 .data-table tr:hover { background: var(--bg-tertiary); }
 
 /* Login / Auth */
-.login-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%); }
+.login-container { min-height: calc(100vh - 140px); display: flex; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-tertiary) 100%); width: 100%; }
 .auth-card { width: 100%; max-width: 420px; background: var(--bg-secondary); padding: 40px; border-radius: var(--radius); box-shadow: var(--shadow-lg); }
 .auth-header { text-align: center; margin-bottom: 32px; }
 .auth-header h1 { font-size: 1.75rem; margin-bottom: 8px; }

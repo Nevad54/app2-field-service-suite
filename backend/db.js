@@ -1,4 +1,4 @@
-// This file re-exports from db/index.js (SQLite version)
-// The MongoDB version is available in db-mongodb.js
-const { createDb } = require('./db');
+// This file re-exports the active DB adapter.
+// This project is configured to use Supabase.
+const { createDb } = require('./db/index-supabase');
 module.exports = { createDb };

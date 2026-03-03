@@ -3,7 +3,7 @@ const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env.supabase') });
 
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_ANON_KEY;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
     console.error("Missing Supabase credentials in .env.supabase");
@@ -113,8 +113,7 @@ const createDb = () => {
                 status: t.status || 'active',
                 color: t.color || '#0ea5e9',
                 hire_date: t.hire_date || null,
-                notes: t.notes || null,
-                avatar: t.avatar || null
+                notes: t.notes || null
             })));
             if (error) console.error("Error seeding technicians:", error.message);
             else console.log(`Seeded ${defaultData.technicians.length} technicians`);
@@ -335,8 +334,7 @@ const createDb = () => {
             status: row.status || 'active',
             color: row.color || '#0ea5e9',
             hire_date: row.hire_date,
-            notes: row.notes || '',
-            avatar: row.avatar
+            notes: row.notes || ''
         }));
     };
 
@@ -560,8 +558,7 @@ const createDb = () => {
             status: technician.status || 'active',
             color: technician.color || '#0ea5e9',
             hire_date: technician.hire_date || null,
-            notes: technician.notes || null,
-            avatar: technician.avatar || null
+            notes: technician.notes || null
         });
     };
 

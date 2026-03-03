@@ -150,64 +150,66 @@ function LoginPage({ onLogin, isLoggedIn }) {
   };
 
   return (
-    <section className="card auth-card">
-      <div className="auth-header">
-        <h1>🔐 Login</h1>
-        <p>Sign in to Field Service Suite</p>
-      </div>
-      <form className="auth-form" onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="username">Username</label>
-          <input 
-            id="username" 
-            value={username} 
-            onChange={(e) => setUsername(e.target.value)} 
-            autoComplete="username"
-            placeholder="Enter username"
-          />
+    <div className="login-container">
+      <section className="card auth-card">
+        <div className="auth-header">
+          <h1>🔐 Login</h1>
+          <p>Sign in to Field Service Suite</p>
         </div>
-        <div className="form-group">
-          <label htmlFor="password">Password</label>
-          <div className="password-input">
-            <input
-              id="password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="Enter password"
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="username">Username</label>
+            <input 
+              id="username" 
+              value={username} 
+              onChange={(e) => setUsername(e.target.value)} 
+              autoComplete="username"
+              placeholder="Enter username"
             />
-            <button 
-              type="button" 
-              className="btn-icon"
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              {showPassword ? '🙈' : '👁️'}
-            </button>
+          </div>
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
+            <div className="password-input">
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                placeholder="Enter password"
+              />
+              <button 
+                type="button" 
+                className="btn-icon"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
+          </div>
+
+          {error ? <div className="form-error-box">{error}</div> : null}
+
+          <button type="submit" className="btn-primary btn-full" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+        
+        <div className="demo-accounts">
+          <p className="demo-title">Demo Accounts:</p>
+          <div className="demo-grid">
+            <span className="demo-role admin">admin / 1111</span>
+            <span className="demo-role dispatcher">dispatcher / 1111</span>
+            <span className="demo-role technician">technician / 1111</span>
+            <span className="demo-role client">client / 1111</span>
           </div>
         </div>
-
-        {error ? <div className="form-error-box">{error}</div> : null}
-
-        <button type="submit" className="btn-primary btn-full" disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign in'}
-        </button>
-      </form>
-      
-      <div className="demo-accounts">
-        <p className="demo-title">Demo Accounts:</p>
-        <div className="demo-grid">
-          <span className="demo-role admin">admin / 1111</span>
-          <span className="demo-role dispatcher">dispatcher / 1111</span>
-          <span className="demo-role technician">technician / 1111</span>
-          <span className="demo-role client">client / 1111</span>
+        
+        <div className="client-portal-link">
+          <p>Are you a customer? <Link to="/client-login">Login to Client Portal</Link></p>
         </div>
-      </div>
-      
-      <div className="client-portal-link">
-        <p>Are you a customer? <Link to="/client-login">Login to Client Portal</Link></p>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -239,54 +241,56 @@ function ClientLoginPage({ onClientLogin, isClientLoggedIn }) {
   };
 
   return (
-    <section className="card auth-card">
-      <div className="auth-header">
-        <h1>🏠 Client Portal</h1>
-        <p>View your service jobs and invoices</p>
-      </div>
-      <form className="auth-form" onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="client-email">Email</label>
-          <input 
-            id="client-email" 
-            type="email" 
-            value={email} 
-            onChange={(e) => setEmail(e.target.value)} 
-            autoComplete="email"
-            placeholder="your@email.com"
-          />
+    <div className="login-container">
+      <section className="card auth-card">
+        <div className="auth-header">
+          <h1>🏠 Client Portal</h1>
+          <p>View your service jobs and invoices</p>
         </div>
-        <div className="form-group">
-          <label htmlFor="client-password">Password</label>
-          <div className="password-input">
-            <input
-              id="client-password"
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="Password"
+        <form className="auth-form" onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="client-email">Email</label>
+            <input 
+              id="client-email" 
+              type="email" 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              autoComplete="email"
+              placeholder="your@email.com"
             />
-            <button 
-              type="button" 
-              className="btn-icon"
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              {showPassword ? '🙈' : '👁️'}
-            </button>
           </div>
+          <div className="form-group">
+            <label htmlFor="client-password">Password</label>
+            <div className="password-input">
+              <input
+                id="client-password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                placeholder="Password"
+              />
+              <button 
+                type="button" 
+                className="btn-icon"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
+          </div>
+
+          {error ? <div className="form-error-box">{error}</div> : null}
+
+          <button type="submit" className="btn-primary btn-full" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign in'}
+          </button>
+        </form>
+        <div className="client-portal-link">
+          <p><Link to="/login">← Back to Staff Login</Link></p>
         </div>
-
-        {error ? <div className="form-error-box">{error}</div> : null}
-
-        <button type="submit" className="btn-primary btn-full" disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign in'}
-        </button>
-      </form>
-      <div className="client-portal-link">
-        <p><Link to="/login">← Back to Staff Login</Link></p>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -1009,7 +1013,11 @@ function JobsPage({ token, user }) {
     scheduledDate: '',
     notes: '',
     category: 'general',
+    projectId: '',
+    taskId: '',
   });
+  const [projects, setProjects] = useState([]);
+  const [projectTasks, setProjectTasks] = useState({});
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -2309,10 +2317,11 @@ export default function App() {
         ) : null}
       </aside>
 
-      {showNotifications && notifications.length > 0 && (
+      {showNotifications && (
         <div className="notifications-panel">
           <h3>🔔 Notifications</h3>
           <div className="notifications-list">
+            {notifications.length === 0 ? <p className="empty-state">No notifications yet.</p> : null}
             {notifications.slice(0, 10).map(notif => (
               <div key={notif.id} className={`notification-item ${notif.read ? 'read' : 'unread'}`}>
                 <strong>{notif.title}</strong>
@@ -2443,30 +2452,6 @@ export default function App() {
             )}
           />
           <Route
-            path="/inventory"
-            element={(
-              <ProtectedRoute isAuthed={isAuthed}>
-                <InventoryPage token={auth?.token} />
-              </ProtectedRoute>
-            )}
-          />
-          <Route
-            path="/equipment"
-            element={(
-              <ProtectedRoute isAuthed={isAuthed}>
-                <EquipmentPage token={auth?.token} />
-              </ProtectedRoute>
-            )}
-          />
-          <Route
-            path="/quotes"
-            element={(
-              <ProtectedRoute isAuthed={isAuthed}>
-                <QuotesPage token={auth?.token} />
-              </ProtectedRoute>
-            )}
-          />
-          <Route
             path="/client-login"
             element={<ClientLoginPage onClientLogin={clientLogin} isClientLoggedIn={isClientAuthed} />}
           />
@@ -2483,6 +2468,4 @@ export default function App() {
     </div>
   );
 }
-
-
 
