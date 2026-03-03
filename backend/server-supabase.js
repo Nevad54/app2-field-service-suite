@@ -588,6 +588,24 @@ const startServer = async () => {
         res.json(task);
     });
 
+    // PATCH endpoint for task dates (used by frontend table)
+    app.patch('/api/tasks/:id/dates', requireAuth, async (req, res) => {
+        const index = memoryCache.tasks.findIndex(t => t.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Task not found' });
+        
+        const { start_date, end_date } = req.body;
+        const task = { ...memoryCache.tasks[index] };
+        
+        if (start_date !== undefined) task.start_date = start_date;
+        if (end_date !== undefined) task.end_date = end_date;
+        task.updated_at = new Date().toISOString();
+        
+        memoryCache.tasks[index] = task;
+        await dbInstance.persistTask(task);
+        
+        res.json(task);
+    });
+
     app.post('/api/tasks', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
         const { project_id, parent_task_id, name, start_date, end_date, progress_percent, weight, notes, sort_order } = req.body;
         if (!project_id || !name) return res.status(400).json({ error: 'Project ID and task name are required' });
