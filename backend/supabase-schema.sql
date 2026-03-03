@@ -125,6 +125,72 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Technicians table
+CREATE TABLE IF NOT EXISTS technicians (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  role TEXT DEFAULT 'technician',
+  skills JSONB DEFAULT '[]'::jsonb,
+  hourly_rate NUMERIC DEFAULT 0,
+  certifications JSONB DEFAULT '[]'::jsonb,
+  availability JSONB,
+  status TEXT DEFAULT 'active',
+  color TEXT,
+  hire_date TEXT,
+  notes TEXT,
+  avatar TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Inventory table
+CREATE TABLE IF NOT EXISTS inventory (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  sku TEXT,
+  category TEXT DEFAULT 'General',
+  quantity NUMERIC DEFAULT 0,
+  unit_price NUMERIC DEFAULT 0,
+  reorder_level NUMERIC DEFAULT 5,
+  location TEXT,
+  supplier TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Equipment table
+CREATE TABLE IF NOT EXISTS equipment (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT DEFAULT 'General',
+  customer_id TEXT,
+  location TEXT,
+  serial_number TEXT,
+  install_date TEXT,
+  status TEXT DEFAULT 'operational',
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Quotes table
+CREATE TABLE IF NOT EXISTS quotes (
+  id TEXT PRIMARY KEY,
+  customer_id TEXT,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT DEFAULT 'pending',
+  total_amount NUMERIC DEFAULT 0,
+  valid_until TEXT,
+  items_json JSONB DEFAULT '[]'::jsonb,
+  created_by TEXT,
+  job_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Note: We will handle sessions using localStorage/Supabase Auth or continue using the server in-memory Map for ease.
 -- The mocked API generated its own JWT/hex token. We'll use the server memory or a lightweight sessions table if needed.
 CREATE TABLE IF NOT EXISTS sessions (
