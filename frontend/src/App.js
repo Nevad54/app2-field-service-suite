@@ -10,6 +10,8 @@ import QuotesPage from './QuotesPage';
 const AUTH_STORAGE_KEY = 'app2_auth';
 const CLIENT_AUTH_STORAGE_KEY = 'app2_client_auth';
 const DARK_MODE_KEY = 'app2_dark_mode';
+const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/+$/, '');
+const apiUrl = (path) => `${API_BASE_URL}${path}`;
 
 const loadStoredDarkMode = () => {
   try {
@@ -47,7 +49,7 @@ const loadStoredClientAuth = () => {
 };
 
 async function apiFetch(path, { token, method = 'GET', body } = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     method,
     headers: {
       Accept: 'application/json',
@@ -1760,7 +1762,7 @@ function InvoicesPage({ token }) {
 
   const handleDownloadPDF = async (invoiceId) => {
     try {
-      const response = await fetch(`/api/invoices/${invoiceId}/pdf`, {
+      const response = await fetch(apiUrl(`/api/invoices/${invoiceId}/pdf`), {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Download failed');
@@ -2014,7 +2016,7 @@ function ExportPage({ token }) {
     setExporting(true);
     setError('');
     try {
-      const response = await fetch(`/api/export/${type}`, {
+      const response = await fetch(apiUrl(`/api/export/${type}`), {
         headers: { Authorization: `Bearer ${token}` },
       });
       
@@ -2468,4 +2470,3 @@ export default function App() {
     </div>
   );
 }
-

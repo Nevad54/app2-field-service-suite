@@ -3,9 +3,11 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom';
 import './ProjectPlanner.css';
 
+const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/+$/, '');
+const apiUrl = (path) => `${API_BASE_URL}${path}`;
 
 async function apiFetch(path, { token, method = 'GET', body } = {}) {
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     method,
     headers: {
       Accept: 'application/json',
@@ -383,7 +385,7 @@ export default function ProjectPlanner({ token }) {
   const updateTaskProgress = async (taskId, progress) => {
     try {
       console.log('Updating task progress:', taskId, progress);
-      const response = await fetch(`/api/tasks/${taskId}/progress`, {
+      const response = await fetch(apiUrl(`/api/tasks/${taskId}/progress`), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
