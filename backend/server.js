@@ -1509,6 +1509,68 @@ app.patch('/api/invoices/:id/status', requireAuth, requireRoles(['admin', 'dispa
  res.json(invoice);
 });
 
+// Download invoice as text file (simple PDF alternative)
+app.get('/api/invoices/:id/pdf', requireAuth, (req, res) => {
+ const invoice = invoices.find(i => i.id === req.params.id);
+ if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+ 
+ // Check permissions - clients can only download their own invoices
+ if (req.authUser.role === 'client' && invoice.customerId !== req.authUser.id) {
+   return res.status(403).json({ error: 'Forbidden' });
+ }
+ 
+ const job = jobs.find(j => j.id === invoice.jobId);
+ const customer = customers.find(c => c.id === invoice.customerId);
+ 
+ // Generate invoice content as text
+ const invoiceContent = `
+========================================
+           INVOICE
+========================================
+
+Invoice Number: ${invoice.id}
+Date Issued: ${invoice.issuedDate || 'N/A'}
+Status: ${invoice.status.toUpperCase()}
+
+----------------------------------------
+BILL TO:
+----------------------------------------
+${customer ? customer.name : 'N/A'}
+${customer ? customer.address : ''}
+${customer ? customer.phone : ''}
+
+----------------------------------------
+JOB DETAILS:
+----------------------------------------
+Job ID: ${invoice.jobId}
+${job ? `Job Title: ${job.title}` : ''}
+${job ? `Location: ${job.location}` : ''}
+
+Description: ${invoice.description || 'N/A'}
+
+----------------------------------------
+AMOUNT:
+----------------------------------------
+Subtotal: $${invoice.amount.toFixed(2)}
+Tax (0%): $0.00
+----------------------------------------
+TOTAL: $${invoice.amount.toFixed(2)}
+========================================
+
+Payment Status: ${invoice.status === 'paid' ? 'PAID' : 'PENDING'}
+${invoice.paidDate ? `Paid Date: ${invoice.paidDate}` : ''}
+
+========================================
+Thank you for your business!
+========================================
+ `.trim();
+ 
+ // Send as downloadable text file
+ res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+ res.setHeader('Content-Disposition', `attachment; filename="invoice-${invoice.id}.txt"`);
+ res.send(invoiceContent);
+});
+
 // ============== ACTIVITY ENDPOINT ==============
 app.get('/api/activity', requireAuth, (req, res) => {
  const limit = parseInt(req.query.limit) || 50;
@@ -1911,12 +1973,22 @@ app.get('/api/projects/:id/planner', requireAuth, (req, res) => {
  
  const projectTasks = tasks.filter(t => t.project_id === req.params.id);
  
+ // Normalize task statuses for consistent filtering
+ const normalizeStatus = (status) => {
+   if (!status) return 'not_started';
+   const s = String(status).trim().toLowerCase();
+   if (s === 'completed') return 'completed';
+   if (s === 'in_progress' || s === 'in-progress') return 'in_progress';
+   if (s === 'delayed') return 'delayed';
+   return 'not_started';
+ };
+ 
  const summary = {
    total: projectTasks.length,
-   completed: projectTasks.filter(t => t.status === 'completed').length,
-   inProgress: projectTasks.filter(t => t.status === 'in_progress').length,
-   delayed: projectTasks.filter(t => t.status === 'delayed').length,
-   notStarted: projectTasks.filter(t => t.status === 'not_started').length,
+   completed: projectTasks.filter(t => normalizeStatus(t.status) === 'completed').length,
+   inProgress: projectTasks.filter(t => normalizeStatus(t.status) === 'in_progress').length,
+   delayed: projectTasks.filter(t => normalizeStatus(t.status) === 'delayed').length,
+   notStarted: projectTasks.filter(t => normalizeStatus(t.status) === 'not_started').length,
    overallProgress: project.overall_progress,
    startDate: project.start_date,
    endDate: project.end_date,

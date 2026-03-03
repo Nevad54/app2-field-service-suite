@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-const AUTH_STORAGE_KEY = 'app2_auth';
-
-function apiFetch(path, { token, method = 'GET', body } = {}) {
-  const response = fetch(path, {
+async function apiFetch(path, { token, method = 'GET', body } = {}) {
+  const response = await fetch(path, {
     method,
     headers: {
       Accept: 'application/json',
@@ -12,20 +10,15 @@ function apiFetch(path, { token, method = 'GET', body } = {}) {
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  return response.then(res => res.json());
-}
 
-function loadStoredAuth() {
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch (e) {
-    return null;
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error((data && data.error) || 'Request failed');
   }
+  return data;
 }
 
-export default function QuotesPage() {
+export default function QuotesPage({ token }) {
   const [quotes, setQuotes] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [error, setError] = useState('');
@@ -35,9 +28,6 @@ export default function QuotesPage() {
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
-  
-  const auth = loadStoredAuth();
-  const token = auth?.token;
 
   const fetchData = useCallback(async () => {
     setLoading(true);

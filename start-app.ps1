@@ -1,6 +1,6 @@
 # Start Field Service Suite
-Write-Host "Starting Backend server..." -ForegroundColor Cyan
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'd:/Web App/app2-field-service-suite/backend'; node server.js"
+Write-Host "Starting Backend server with Supabase..." -ForegroundColor Cyan
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location 'd:/Web App/app2-field-service-suite/backend'; node server-supabase.js"
 
 Start-Sleep -Seconds 2
 
