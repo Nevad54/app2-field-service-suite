@@ -146,7 +146,7 @@ Spreadsheet-based project scheduler with Excel-like functionality:
 | **Styling** | CSS Variables, Custom CSS |
 | **Backend** | Node.js, Express.js |
 | **Authentication** | Bearer Token (JWT-style) |
-| **Data Storage** | In-Memory (Demo Mode) |
+| **Data Storage** | In-Memory (Demo) or Supabase PostgreSQL (Production) |
 | **API Style** | RESTful |
 
 ---
@@ -191,6 +191,36 @@ cd frontend && npm start
 ### Access the Application
 - **Frontend**: http://localhost:3001
 - **Backend API**: http://localhost:3002/api/status
+
+---
+
+## 🗄️ Database Setup (Optional - For Production)
+
+The app defaults to in-memory storage for demo purposes. To enable persistent storage with Supabase PostgreSQL:
+
+### Option 1: Supabase (Recommended for Production)
+
+1. Create a free account at [supabase.com](https://supabase.com)
+2. Create a new project and get your credentials:
+   - Project URL
+   - Anon/Public API Key
+3. Create a `.env.supabase` file in the `backend/` folder:
+   
+```
+   SUPABASE_URL=your_supabase_project_url
+   SUPABASE_KEY=your_supabase_anon_key
+   
+```
+4. Run the server with Supabase mode:
+   
+```
+   node backend/server-supabase.js
+   
+```
+
+### Option 2: Local SQLite
+
+The app can use SQLite for local development. See `backend/supabase-schema.sql` for the schema.
 
 ---
 
