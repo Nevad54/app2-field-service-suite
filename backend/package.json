@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon server-supabase.js",
     "start": "node server-supabase.js",
-    "migrate": "node db/migrate.js"
+    "migrate": "node db/migrate.js",
+    "test:api": "node --test tests/api-regression.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.98.0",
