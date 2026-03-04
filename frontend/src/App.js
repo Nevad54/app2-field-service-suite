@@ -1275,19 +1275,31 @@ function JobsPage({ token, user }) {
     }
   };
 
+  const handleJobDelete = async (jobId) => {
+    if (!window.confirm('Are you sure you want to delete this job? This action cannot be undone.')) return;
+    setError('');
+    setSuccess('');
+    try {
+      await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}`, { token, method: 'DELETE' });
+      await fetchJobs();
+      setSuccess(`Job ${jobId} deleted successfully.`);
+    } catch (e) {
+      setError(e.message || 'Failed to delete job');
+    }
+  };
+
   return (
     <section className="card">
       <div className="page-header">
         <h1>📋 Jobs</h1>
         <div className="job-counts">
+          <span className="count total">Total: {jobs.length}</span>
           {canManageJobs && !showCreateForm && (
             <button className="btn-primary btn-small" onClick={() => setShowCreateForm(true)}>+ Create Job</button>
           )}
-          <span className="count total">Total: {jobs.length}</span>
           <span className="count new">New: {jobs.filter(j => j.status === 'new').length}</span>
           <span className="count progress">In Progress: {jobs.filter(j => j.status === 'in-progress').length}</span>
           <span className="count completed">Completed: {jobs.filter(j => j.status === 'completed').length}</span>
-        </div>
       </div>
 
       {error ? <div className="form-error-box">{error}</div> : null}
@@ -1422,6 +1434,17 @@ function JobsPage({ token, user }) {
                   <span className={`category-tag ${job.category}`}>{job.category}</span>
                 </div>
                 <div className="job-actions-row">
+                  {canManageJobs ? (
+                    <button
+                      type="button"
+                      className="btn-icon btn-danger"
+                      onClick={() => handleJobDelete(job.id)}
+                      title="Delete job"
+                      disabled={workingId === job.id}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="btn-icon"
@@ -1635,14 +1658,24 @@ function JobsPage({ token, user }) {
 
                   <div className="job-action-buttons">
                     {canManageJobs && (
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        onClick={() => handleManagerUpdate(job)}
-                        disabled={workingId === job.id}
-                      >
-                        {workingId === job.id ? 'Saving...' : '💾 Save Changes'}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={() => handleManagerUpdate(job)}
+                          disabled={workingId === job.id}
+                        >
+                          {workingId === job.id ? 'Saving...' : '💾 Save Changes'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger"
+                          onClick={() => handleJobDelete(job.id)}
+                          disabled={workingId === job.id}
+                        >
+                          🗑️ Delete Job
+                        </button>
+                      </>
                     )}
                     
                     <button
