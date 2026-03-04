@@ -1293,13 +1293,14 @@ function JobsPage({ token, user }) {
       <div className="page-header">
         <h1>📋 Jobs</h1>
         <div className="job-counts">
-          <span className="count total">Total: {jobs.length}</span>
           {canManageJobs && !showCreateForm && (
             <button className="btn-primary btn-small" onClick={() => setShowCreateForm(true)}>+ Create Job</button>
           )}
+          <span className="count total">Total: {jobs.length}</span>
           <span className="count new">New: {jobs.filter(j => j.status === 'new').length}</span>
           <span className="count progress">In Progress: {jobs.filter(j => j.status === 'in-progress').length}</span>
           <span className="count completed">Completed: {jobs.filter(j => j.status === 'completed').length}</span>
+        </div>
       </div>
 
       {error ? <div className="form-error-box">{error}</div> : null}
