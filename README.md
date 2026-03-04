@@ -205,6 +205,7 @@ The app defaults to in-memory storage for demo purposes. To enable persistent st
    - Project URL
    - Anon/Public API Key
    - Service Role Key (recommended for backend)
+   - Create a Storage bucket named `job-photos` (set bucket to Public)
 3. In Supabase SQL Editor, run:
    - `backend/supabase-schema-complete.sql` for first-time setup
    - `backend/supabase-upgrade.sql` if your tables already exist
@@ -214,6 +215,7 @@ The app defaults to in-memory storage for demo purposes. To enable persistent st
    SUPABASE_URL=your_supabase_project_url
    SUPABASE_ANON_KEY=your_supabase_anon_key
    SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+   SUPABASE_STORAGE_BUCKET=job-photos
    
 ```
 5. Run the backend with Supabase mode:

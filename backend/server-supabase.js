@@ -10,12 +10,31 @@ const PORT = process.env.PORT || 3002;
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const JOB_UPLOADS_DIR = path.join(UPLOADS_DIR, 'jobs');
 const PHOTO_TAGS = new Set(['before', 'after', 'damage', 'parts', 'other']);
+const SUPABASE_STORAGE_BUCKET = String(process.env.SUPABASE_STORAGE_BUCKET || 'job-photos').trim();
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
 app.use('/uploads', express.static(UPLOADS_DIR));
 
 fs.mkdirSync(JOB_UPLOADS_DIR, { recursive: true });
+
+const getStoragePathFromPhoto = (photo) => {
+    if (!photo || typeof photo !== 'object') return '';
+    if (typeof photo.storagePath === 'string' && photo.storagePath.trim()) return photo.storagePath.trim();
+    const data = String(photo.data || '');
+    if (!data) return '';
+    const publicNeedle = `/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/`;
+    const signNeedle = `/storage/v1/object/sign/${SUPABASE_STORAGE_BUCKET}/`;
+    const needle = data.includes(publicNeedle) ? publicNeedle : (data.includes(signNeedle) ? signNeedle : '');
+    if (!needle) return '';
+    const rest = data.split(needle)[1] || '';
+    const rawPath = rest.split('?')[0] || '';
+    try {
+        return decodeURIComponent(rawPath);
+    } catch (_) {
+        return rawPath;
+    }
+};
 
 let dbInstance;
 let memoryCache = {
@@ -466,17 +485,26 @@ const startServer = async () => {
             : 'img';
 
         const fileId = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        const fileName = `${existing.id}-${fileId}.${ext}`;
-        const filePath = path.join(JOB_UPLOADS_DIR, fileName);
-        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        const objectPath = `jobs/${existing.id}/${fileId}.${ext}`;
+        const bytes = Buffer.from(base64Data, 'base64');
+        const { error: uploadErr } = await dbInstance.supabase.storage
+            .from(SUPABASE_STORAGE_BUCKET)
+            .upload(objectPath, bytes, { contentType: mimeType, upsert: false, cacheControl: '3600' });
+        if (uploadErr) {
+            return res.status(500).json({ error: `Failed to upload to Supabase Storage: ${uploadErr.message}` });
+        }
+        const { data: publicData } = dbInstance.supabase.storage
+            .from(SUPABASE_STORAGE_BUCKET)
+            .getPublicUrl(objectPath);
 
         const photoRecord = {
             id: fileId,
-            data: `/uploads/jobs/${fileName}`,
+            data: publicData?.publicUrl || '',
             mimeType,
             uploadedBy: req.authUser.username,
             uploadedAt: new Date().toISOString(),
             tag,
+            storagePath: objectPath,
         };
         if (!Array.isArray(existing.photos)) existing.photos = [];
         existing.photos.push(photoRecord);
@@ -509,7 +537,15 @@ const startServer = async () => {
         }
 
         const [removed] = existing.photos.splice(photoIndex, 1);
-        if (removed && typeof removed.data === 'string' && removed.data.startsWith('/uploads/jobs/')) {
+        const storagePath = getStoragePathFromPhoto(removed);
+        if (storagePath) {
+            const { error: removeErr } = await dbInstance.supabase.storage
+                .from(SUPABASE_STORAGE_BUCKET)
+                .remove([storagePath]);
+            if (removeErr) {
+                console.error('Failed to remove storage object:', removeErr.message);
+            }
+        } else if (removed && typeof removed.data === 'string' && removed.data.startsWith('/uploads/jobs/')) {
             const filePath = path.join(UPLOADS_DIR, removed.data.replace(/^\/uploads\//, '').replace(/\//g, path.sep));
             try {
                 if (fs.existsSync(filePath)) fs.unlinkSync(filePath);

@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS job_photos (
   id TEXT PRIMARY KEY,
   job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
   data TEXT NOT NULL,
+  storage_path TEXT,
   mime_type TEXT,
   uploaded_by TEXT,
   uploaded_at TIMESTAMPTZ DEFAULT NOW(),
