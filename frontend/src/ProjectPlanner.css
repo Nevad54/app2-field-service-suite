@@ -129,6 +129,13 @@
   flex-wrap: wrap;
 }
 
+.planner-actions .view-toggle {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 .planner-actions .view-toggle button {
   padding: 10px 18px;
   border: 1px solid var(--border);
@@ -1344,14 +1351,25 @@ letter-spacing: 0.04em;
     flex-direction: column;
     align-items: stretch;
   }
+
+  .planner-actions-left,
+  .planner-actions-right {
+    width: 100%;
+  }
   
   .planner-actions .view-toggle {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     justify-content: center;
+    width: 100%;
   }
   
   .planner-actions .view-toggle button {
     padding: 8px 14px;
     font-size: 0.9rem;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
   }
   
   .planner-actions .btn-add {
@@ -1463,15 +1481,48 @@ letter-spacing: 0.04em;
   .planner .timeline-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
   }
   
   .planner .timeline-scale {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 8px;
+  }
+
+  .planner .timeline-scale button {
+    width: 100%;
+    min-width: 0;
     justify-content: center;
+  }
+
+  .planner .timeline-hour-controls {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
+    width: 100%;
   }
 
   .planner .timeline-focus-date {
     width: 100%;
     min-width: unset;
+  }
+
+  .planner .timeline-month-label {
+    width: 100%;
+    min-width: 0;
+    text-align: center;
+  }
+
+  .planner .timeline-zoom-controls {
+    width: 100%;
+    justify-content: center;
+    margin-left: 0;
+  }
+
+  .planner .btn-today {
+    width: 100%;
+    justify-content: center;
   }
   
   /* TIMELINE LABELS - Shrink for smaller devices to show more timeline scroll */
@@ -1579,9 +1630,14 @@ letter-spacing: 0.04em;
   }
   
   .planner-actions .view-toggle button {
-    flex: 1;
+    min-width: 0;
     padding: 8px 10px;
     font-size: 0.85rem;
+  }
+
+  .planner .timeline-scale button {
+    font-size: 0.85rem;
+    padding: 8px 10px;
   }
   
   .planner .timeline-labels {
