@@ -263,14 +263,13 @@ export default function ProjectsPage({ token }) {
   return (
     <section className="card">
       <div className="page-header">
-        <h1>📁 Projects</h1>
+        <h1>📁 Projects <span className="header-total">({projects.length} total)</span></h1>
         <div className="header-actions">
           <div className="view-toggle">
             <button className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`} onClick={() => setViewMode('grid')}>▦ Grid</button>
             <button className={`toggle-btn ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')}>☰ List</button>
             <button className={`toggle-btn ${viewMode === 'kanban' ? 'active' : ''}`} onClick={() => setViewMode('kanban')}>▦ Kanban</button>
           </div>
-          {!showForm && <button className="btn-primary" onClick={() => setShowForm(true)}>+ New Project</button>}
         </div>
       </div>
 
@@ -305,6 +304,7 @@ export default function ProjectsPage({ token }) {
             <span className="stat-label">Overdue</span>
           </div>
         </div>
+        {!showForm && <button className="btn-primary" onClick={() => setShowForm(true)}>+ New Project</button>}
       </div>
 
       {showForm && (

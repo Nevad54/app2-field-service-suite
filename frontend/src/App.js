@@ -1001,6 +1001,7 @@ function JobsPage({ token, user }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [showJobDetails, setShowJobDetails] = useState(null);
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [worklogDrafts, setWorklogDrafts] = useState({});
   const canManageJobs = user.role === 'admin' || user.role === 'dispatcher';
   const isTechnician = user.role === 'technician';
@@ -1279,6 +1280,9 @@ function JobsPage({ token, user }) {
       <div className="page-header">
         <h1>📋 Jobs</h1>
         <div className="job-counts">
+          {canManageJobs && !showCreateForm && (
+            <button className="btn-primary btn-small" onClick={() => setShowCreateForm(true)}>+ Create Job</button>
+          )}
           <span className="count total">Total: {jobs.length}</span>
           <span className="count new">New: {jobs.filter(j => j.status === 'new').length}</span>
           <span className="count progress">In Progress: {jobs.filter(j => j.status === 'in-progress').length}</span>
@@ -1289,85 +1293,98 @@ function JobsPage({ token, user }) {
       {error ? <div className="form-error-box">{error}</div> : null}
       {success ? <div className="form-success-box">{success}</div> : null}
 
-      {canManageJobs && (
-        <form className="form-section job-create-form" onSubmit={handleCreate}>
-          <h2>➕ Create New Job</h2>
-          <div className="form-grid">
-            <div className="form-group">
-              <label>Job Title *</label>
-              <input
-                placeholder="Enter job title"
-                value={draft.title}
-                onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
-                required
-              />
+      {showCreateForm && (
+        <div className="modal-backdrop" onClick={() => setShowCreateForm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>➕ Create New Job</h2>
+              <button className="modal-close" onClick={() => setShowCreateForm(false)}>×</button>
             </div>
-            <div className="form-group">
-              <label>Category</label>
-              <select value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>
-                <option value="general">General</option>
-                <option value="hvac">HVAC</option>
-                <option value="electrical">Electrical</option>
-                <option value="plumbing">Plumbing</option>
-                <option value="repair">Repair</option>
-                <option value="installation">Installation</option>
-                <option value="inspection">Inspection</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Priority</label>
-              <select value={draft.priority} onChange={(e) => setDraft((prev) => ({ ...prev, priority: e.target.value }))}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Assign To</label>
-              <select value={draft.assignedTo} onChange={(e) => setDraft((prev) => ({ ...prev, assignedTo: e.target.value }))}>
-                <option value="">Unassigned</option>
-                <option value="technician">technician</option>
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Customer</label>
-              <select value={draft.customerId} onChange={(e) => setDraft((prev) => ({ ...prev, customerId: e.target.value }))}>
-                <option value="">No Customer</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Scheduled Date</label>
-              <input
-                type="date"
-                value={draft.scheduledDate}
-                onChange={(e) => setDraft((prev) => ({ ...prev, scheduledDate: e.target.value }))}
-              />
-            </div>
-            <div className="form-group full-width">
-              <label>Location</label>
-              <input
-                placeholder="Job location"
-                value={draft.location}
-                onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))}
-              />
-            </div>
-            <div className="form-group full-width">
-              <label>Notes</label>
-              <textarea
-                placeholder="Job notes..."
-                value={draft.notes}
-                onChange={(e) => setDraft((prev) => ({ ...prev, notes: e.target.value }))}
-                rows={2}
-              />
-            </div>
+            <form onSubmit={handleCreate}>
+              <div className="form-section">
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Job Title *</label>
+                    <input
+                      placeholder="Enter job title"
+                      value={draft.title}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, title: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Category</label>
+                    <select value={draft.category} onChange={(e) => setDraft((prev) => ({ ...prev, category: e.target.value }))}>
+                      <option value="general">General</option>
+                      <option value="hvac">HVAC</option>
+                      <option value="electrical">Electrical</option>
+                      <option value="plumbing">Plumbing</option>
+                      <option value="repair">Repair</option>
+                      <option value="installation">Installation</option>
+                      <option value="inspection">Inspection</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Priority</label>
+                    <select value={draft.priority} onChange={(e) => setDraft((prev) => ({ ...prev, priority: e.target.value }))}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Assign To</label>
+                    <select value={draft.assignedTo} onChange={(e) => setDraft((prev) => ({ ...prev, assignedTo: e.target.value }))}>
+                      <option value="">Unassigned</option>
+                      <option value="technician">technician</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Customer</label>
+                    <select value={draft.customerId} onChange={(e) => setDraft((prev) => ({ ...prev, customerId: e.target.value }))}>
+                      <option value="">No Customer</option>
+                      {customers.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Scheduled Date</label>
+                    <input
+                      type="date"
+                      value={draft.scheduledDate}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, scheduledDate: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group full-width">
+                    <label>Location</label>
+                    <input
+                      placeholder="Job location"
+                      value={draft.location}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, location: e.target.value }))}
+                    />
+                  </div>
+                  <div className="form-group full-width">
+                    <label>Notes</label>
+                    <textarea
+                      placeholder="Job notes..."
+                      value={draft.notes}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, notes: e.target.value }))}
+                      rows={2}
+                    />
+                  </div>
+                </div>
+                <div className="form-actions">
+                  <button type="submit" className="btn-primary">Create Job</button>
+                  <button type="button" className="btn-secondary" onClick={() => setShowCreateForm(false)}>Cancel</button>
+                </div>
+              </div>
+            </form>
           </div>
-          <button type="submit" className="btn-primary">Create Job</button>
-        </form>
+        </div>
       )}
 
+      {!showCreateForm && (
       <div className="search-filter-bar">
         <input
           type="text"
@@ -1388,6 +1405,7 @@ function JobsPage({ token, user }) {
           <option value="completed">Completed</option>
         </select>
       </div>
+      )}
 
       {loading ? <p className="loading">Loading jobs...</p> : null}
       {!loading && !jobs.length ? <p className="empty-state">No jobs available. Create your first job!</p> : null}
