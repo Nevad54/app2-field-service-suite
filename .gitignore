@@ -7,3 +7,21 @@ dist/
 coverage/
 .DS_Store
 Thumbs.db
+
+# Log files
+*.log
+frontend/devserver.err.log
+frontend/devserver.out.log
+
+# Empty scaffolding directories
+frontend/src/app/
+frontend/src/components/
+frontend/src/features/
+frontend/src/layout/
+frontend/src/pages/
+frontend/src/shared/
+frontend/src/state/
+frontend/src/utils/
+
+# Worktree
+worktree-1772601611032/

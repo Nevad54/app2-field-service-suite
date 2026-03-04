@@ -1474,14 +1474,38 @@ letter-spacing: 0.04em;
     min-width: unset;
   }
   
+  /* TIMELINE LABELS - Shrink for smaller devices to show more timeline scroll */
   .planner .timeline-labels {
-    width: 150px;
+    width: 100px;
+    min-width: 100px;
+    flex: 0 0 100px;
   }
   
   .planner .timeline-row-label {
-    font-size: 0.8rem;
-    padding: 12px 8px;
-    height: 50px;
+    font-size: 0.7rem;
+    padding: 6px 4px;
+    height: 44px;
+    gap: 2px;
+  }
+
+  .planner .timeline-row {
+    height: 44px;
+  }
+  
+  .planner .timeline-row-label .task-name {
+    font-size: 0.7rem;
+    max-width: 80px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .planner .timeline-row-label .task-dates {
+    font-size: 0.6rem;
+    max-width: 85px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   
   .planner .timeline-bar {
@@ -1561,12 +1585,29 @@ letter-spacing: 0.04em;
   }
   
   .planner .timeline-labels {
-    width: 120px;
+    width: 84px;
+    min-width: 84px;
+    flex: 0 0 84px;
   }
-  
+
   .planner .timeline-row-label {
-    font-size: 0.75rem;
-    padding: 10px 6px;
+    font-size: 0.65rem;
+    padding: 6px 4px;
+    gap: 1px;
+  }
+
+  .planner .timeline-row {
+    height: 44px;
+  }
+
+  .planner .timeline-row-label .task-name {
+    font-size: 0.65rem;
+    max-width: 72px;
+  }
+
+  .planner .timeline-row-label .task-dates {
+    font-size: 0.56rem;
+    max-width: 72px;
   }
   
   .planner .calendar-day {
