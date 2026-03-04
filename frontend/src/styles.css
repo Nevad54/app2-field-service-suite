@@ -416,6 +416,18 @@ body {
 .photos-grid img { width: 100%; height: 100px; object-fit: cover; border-radius: var(--radius-sm); cursor: pointer; transition: all 0.2s; }
 .photos-grid img:hover { transform: scale(1.05); }
 .photo-item { position: relative; }
+.photo-tag-badge {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.8);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
 .photo-delete-btn {
   position: absolute;
   top: 6px;

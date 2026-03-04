@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS job_photos (
   data TEXT NOT NULL,
   mime_type TEXT,
   uploaded_by TEXT,
-  uploaded_at TIMESTAMPTZ DEFAULT NOW()
+  uploaded_at TIMESTAMPTZ DEFAULT NOW(),
+  tag TEXT DEFAULT 'other'
 );
 
 CREATE TABLE IF NOT EXISTS job_worklogs (

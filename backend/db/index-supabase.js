@@ -50,7 +50,8 @@ const mapJobFromRow = (row) => {
             data: p.data,
             mimeType: p.mime_type || '',
             uploadedBy: p.uploaded_by || '',
-            uploadedAt: p.uploaded_at || ''
+            uploadedAt: p.uploaded_at || '',
+            tag: p.tag || 'other'
         })) : [],
         worklog: row.job_worklogs ? row.job_worklogs.map(w => ({
             at: w.at,
@@ -388,7 +389,8 @@ const createDb = () => {
                 data: p.data,
                 mime_type: p.mimeType || null,
                 uploaded_by: p.uploadedBy || null,
-                uploaded_at: p.uploadedAt || new Date().toISOString()
+                uploaded_at: p.uploadedAt || new Date().toISOString(),
+                tag: p.tag || 'other'
             })));
         }
 

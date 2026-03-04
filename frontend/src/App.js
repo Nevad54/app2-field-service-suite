@@ -12,6 +12,17 @@ const CLIENT_AUTH_STORAGE_KEY = 'app2_client_auth';
 const DARK_MODE_KEY = 'app2_dark_mode';
 const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/+$/, '');
 const apiUrl = (path) => `${API_BASE_URL}${path}`;
+const PHOTO_TAG_OPTIONS = ['before', 'after', 'damage', 'parts', 'other'];
+
+const normalizePhotoTag = (value) => {
+  const next = String(value || '').toLowerCase().trim();
+  return PHOTO_TAG_OPTIONS.includes(next) ? next : null;
+};
+
+const formatPhotoTag = (value) => {
+  const next = normalizePhotoTag(value || 'other') || 'other';
+  return next.charAt(0).toUpperCase() + next.slice(1);
+};
 
 const loadStoredDarkMode = () => {
   try {
@@ -418,6 +429,19 @@ function ClientPortalPage({ token, user, onLogout }) {
                     <div className="job-times">
                       <span>✅ Started: {new Date(job.checkinTime).toLocaleString()}</span>
                       {job.checkoutTime && <span>✅ Completed: {new Date(job.checkoutTime).toLocaleString()}</span>}
+                    </div>
+                  )}
+                  {Array.isArray(job.photos) && job.photos.length > 0 && (
+                    <div className="job-photos">
+                      <strong>Photos:</strong>
+                      <div className="photos-grid">
+                        {job.photos.map((photo, idx) => (
+                          <div key={photo.id || idx} className="photo-item">
+                            <img src={photo.data || photo} alt={`Job photo ${idx + 1}`} />
+                            <span className="photo-tag-badge">{formatPhotoTag(photo.tag)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1120,6 +1144,14 @@ function JobsPage({ token, user }) {
   };
 
   const handlePhotoUpload = async (jobId) => {
+    const tagInput = window.prompt('Set photo tag: before, after, damage, parts, other', 'after');
+    if (tagInput === null) return;
+    const tag = normalizePhotoTag(tagInput);
+    if (!tag) {
+      setError('Invalid tag. Use: before, after, damage, parts, or other.');
+      return;
+    }
+
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
@@ -1151,11 +1183,11 @@ function JobsPage({ token, user }) {
           await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/photos`, {
             token,
             method: 'POST',
-            body: { photo: dataUrl }
+            body: { photo: dataUrl, tag }
           });
         }
         await fetchJobs();
-        setSuccess('Photo uploaded successfully.');
+        setSuccess(`Photo uploaded successfully (${formatPhotoTag(tag)}).`);
       } catch (err) {
         setError(err.message || 'Failed to upload photo');
       } finally {
@@ -1627,6 +1659,7 @@ function JobsPage({ token, user }) {
                         {job.photos.map((photo, idx) => (
                           <div key={photo.id || idx} className="photo-item">
                             <img src={photo.data || photo} alt={`Job photo ${idx + 1}`} />
+                            <span className="photo-tag-badge">{formatPhotoTag(photo.tag)}</span>
                             {canManageJobs ? (
                               <button
                                 type="button"

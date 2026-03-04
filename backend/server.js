@@ -261,6 +261,22 @@ let jobs = [
 const normalizeJob = (job) => {
  if (!job) return job;
  if (!Array.isArray(job.photos)) job.photos = [];
+ job.photos = job.photos.map((photo, idx) => {
+  if (typeof photo === 'string') {
+   return {
+    id: `legacy-${idx}`,
+    data: photo,
+    mimeType: '',
+    uploadedBy: '',
+    uploadedAt: '',
+    tag: 'other',
+   };
+  }
+  return {
+   ...photo,
+   tag: String(photo.tag || 'other').toLowerCase(),
+  };
+ });
  if (!Array.isArray(job.partsUsed)) job.partsUsed = [];
  if (!Array.isArray(job.materialsUsed)) job.materialsUsed = [];
  if (!Array.isArray(job.worklog)) job.worklog = [];
@@ -1411,6 +1427,9 @@ app.post('/api/jobs/:id/photos', requireAuth, (req, res) => {
  }
 
  const photo = String(req.body.photo || '');
+ const incomingTag = String(req.body.tag || 'other').toLowerCase().trim();
+ const allowedTags = new Set(['before', 'after', 'damage', 'parts', 'other']);
+ const tag = allowedTags.has(incomingTag) ? incomingTag : 'other';
  const match = photo.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
  if (!match) {
    return res.status(400).json({ error: 'Invalid photo payload' });
@@ -1438,6 +1457,7 @@ app.post('/api/jobs/:id/photos', requireAuth, (req, res) => {
    mimeType,
    uploadedBy: req.authUser.username,
    uploadedAt: new Date().toISOString(),
+   tag,
  };
  existing.photos.push(photoRecord);
  persistPhotosForJob(existing.id, existing.photos);

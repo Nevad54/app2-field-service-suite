@@ -204,19 +204,29 @@ The app defaults to in-memory storage for demo purposes. To enable persistent st
 2. Create a new project and get your credentials:
    - Project URL
    - Anon/Public API Key
-3. Create a `.env.supabase` file in the `backend/` folder:
+   - Service Role Key (recommended for backend)
+3. In Supabase SQL Editor, run:
+   - `backend/supabase-schema-complete.sql` for first-time setup
+   - `backend/supabase-upgrade.sql` if your tables already exist
+4. Create a `.env.supabase` file in the `backend/` folder:
    
 ```
    SUPABASE_URL=your_supabase_project_url
-   SUPABASE_KEY=your_supabase_anon_key
+   SUPABASE_ANON_KEY=your_supabase_anon_key
+   SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
    
 ```
-4. Run the server with Supabase mode:
+5. Run the backend with Supabase mode:
    
 ```
-   node backend/server-supabase.js
+   cd backend
+   npm run start
    
 ```
+6. Start frontend and point it to backend API:
+   - Create `frontend/.env.local`:
+   - `REACT_APP_API_BASE_URL=http://localhost:3002`
+   - Run `cd frontend && npm start`
 
 ### Option 2: Local SQLite
 

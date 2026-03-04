@@ -9,6 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const JOB_UPLOADS_DIR = path.join(UPLOADS_DIR, 'jobs');
+const PHOTO_TAGS = new Set(['before', 'after', 'damage', 'parts', 'other']);
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
@@ -435,6 +436,90 @@ const startServer = async () => {
         const { supabase } = dbInstance;
         await supabase.from('jobs').delete().eq('id', req.params.id);
         await logActivity('job', job.id, req.authUser.username, 'deleted', `Job ${job.id} deleted`);
+        return res.json({ ok: true });
+    });
+
+    app.post('/api/jobs/:id/photos', requireAuth, async (req, res) => {
+        const index = memoryCache.jobs.findIndex(j => j.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const existing = memoryCache.jobs[index];
+
+        if (req.authUser.role === 'technician') {
+            if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+        } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        const photo = String(req.body.photo || '');
+        const incomingTag = String(req.body.tag || 'other').toLowerCase().trim();
+        const tag = PHOTO_TAGS.has(incomingTag) ? incomingTag : 'other';
+        const match = photo.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+        if (!match) return res.status(400).json({ error: 'Invalid photo payload' });
+        if (photo.length > 8_000_000) return res.status(400).json({ error: 'Photo is too large' });
+
+        const mimeType = match[1];
+        const base64Data = match[2];
+        const ext = mimeType.includes('jpeg') ? 'jpg'
+            : mimeType.includes('png') ? 'png'
+            : mimeType.includes('webp') ? 'webp'
+            : mimeType.includes('gif') ? 'gif'
+            : 'img';
+
+        const fileId = `photo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const fileName = `${existing.id}-${fileId}.${ext}`;
+        const filePath = path.join(JOB_UPLOADS_DIR, fileName);
+        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+
+        const photoRecord = {
+            id: fileId,
+            data: `/uploads/jobs/${fileName}`,
+            mimeType,
+            uploadedBy: req.authUser.username,
+            uploadedAt: new Date().toISOString(),
+            tag,
+        };
+        if (!Array.isArray(existing.photos)) existing.photos = [];
+        existing.photos.push(photoRecord);
+        existing.updated_at = new Date().toISOString();
+        memoryCache.jobs[index] = existing;
+        await dbInstance.persistJob(existing);
+
+        await logActivity('job', existing.id, req.authUser.username, 'photo_added', `Photo added to ${existing.id}`);
+        return res.status(201).json(photoRecord);
+    });
+
+    app.delete('/api/jobs/:id/photos/:photoId', requireAuth, async (req, res) => {
+        const index = memoryCache.jobs.findIndex(j => j.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const existing = memoryCache.jobs[index];
+
+        if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+        if (!Array.isArray(existing.photos) || existing.photos.length === 0) {
+            return res.status(404).json({ error: 'Photo not found' });
+        }
+
+        const photoId = String(req.params.photoId || '');
+        const byIdIndex = existing.photos.findIndex((p) => String((p && p.id) || '') === photoId);
+        const byIndex = Number.isInteger(Number(photoId)) ? Number(photoId) : -1;
+        const photoIndex = byIdIndex >= 0 ? byIdIndex : byIndex;
+        if (photoIndex < 0 || photoIndex >= existing.photos.length) {
+            return res.status(404).json({ error: 'Photo not found' });
+        }
+
+        const [removed] = existing.photos.splice(photoIndex, 1);
+        if (removed && typeof removed.data === 'string' && removed.data.startsWith('/uploads/jobs/')) {
+            const filePath = path.join(UPLOADS_DIR, removed.data.replace(/^\/uploads\//, '').replace(/\//g, path.sep));
+            try {
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            } catch (_) {}
+        }
+
+        existing.updated_at = new Date().toISOString();
+        memoryCache.jobs[index] = existing;
+        await dbInstance.persistJob(existing);
+        await logActivity('job', existing.id, req.authUser.username, 'photo_removed', `Photo removed from ${existing.id}`);
         return res.json({ ok: true });
     });
 
