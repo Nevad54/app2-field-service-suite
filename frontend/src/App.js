@@ -6,12 +6,16 @@ import TeamPage from './TeamPage';
 import InventoryPage from './InventoryPage';
 import EquipmentPage from './EquipmentPage';
 import QuotesPage from './QuotesPage';
-
-const AUTH_STORAGE_KEY = 'app2_auth';
-const CLIENT_AUTH_STORAGE_KEY = 'app2_client_auth';
-const DARK_MODE_KEY = 'app2_dark_mode';
-const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/+$/, '');
-const apiUrl = (path) => `${API_BASE_URL}${path}`;
+import RecurringPage from './RecurringPage';
+import { apiFetch, apiUrl } from './api';
+import {
+  AUTH_STORAGE_KEY,
+  CLIENT_AUTH_STORAGE_KEY,
+  DARK_MODE_KEY,
+  loadStoredAuth,
+  loadStoredClientAuth,
+  loadStoredDarkMode
+} from './authStorage';
 const PHOTO_TAG_OPTIONS = ['before', 'after', 'damage', 'parts', 'other'];
 
 const normalizePhotoTag = (value) => {
@@ -30,59 +34,6 @@ const formatPhotoLabel = (photo) => {
   if (tag === 'other' && note) return note;
   return formatPhotoTag(tag);
 };
-
-const loadStoredDarkMode = () => {
-  try {
-    const raw = localStorage.getItem(DARK_MODE_KEY);
-    return raw === 'true';
-  } catch (e) {
-    return false;
-  }
-};
-
-const toAuthHeader = (token) => (token ? { Authorization: `Bearer ${token}` } : {});
-
-const loadStoredAuth = () => {
-  try {
-    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || !parsed.token || !parsed.user) return null;
-    return parsed;
-  } catch (e) {
-    return null;
-  }
-};
-
-const loadStoredClientAuth = () => {
-  try {
-    const raw = localStorage.getItem(CLIENT_AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || !parsed.token || !parsed.user) return null;
-    return parsed;
-  } catch (e) {
-    return null;
-  }
-};
-
-async function apiFetch(path, { token, method = 'GET', body } = {}) {
-  const response = await fetch(apiUrl(path), {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...toAuthHeader(token),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error((data && data.error) || 'Request failed');
-  }
-  return data;
-}
 
 // ============== HOME PAGE ==============
 function HomePage() {
@@ -202,6 +153,8 @@ function LoginPage({ onLogin, isLoggedIn }) {
                 type="button" 
                 className="btn-icon"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
               >
                 {showPassword ? '🙈' : '👁️'}
               </button>
@@ -294,6 +247,8 @@ function ClientLoginPage({ onClientLogin, isClientLoggedIn }) {
                 type="button" 
                 className="btn-icon"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
               >
                 {showPassword ? '🙈' : '👁️'}
               </button>
@@ -485,9 +440,154 @@ function ClientPortalPage({ token, user, onLogout }) {
   );
 }
 
+const toDateAtMidnight = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const parts = raw.split('-').map((part) => Number(part));
+  if (parts.length !== 3 || parts.some((num) => Number.isNaN(num))) return null;
+  const [y, m, d] = parts;
+  return new Date(y, m - 1, d);
+};
+
+const startOfToday = () => {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+};
+
+const DEFAULT_DISPATCH_SETTINGS = Object.freeze({
+  maxJobsPerTechnicianPerDay: 2,
+  slaDueSoonDays: 1,
+});
+
+const normalizeDispatchSettings = (value = {}) => {
+  const maxJobs = Number(value.maxJobsPerTechnicianPerDay);
+  const dueSoonDays = Number(value.slaDueSoonDays);
+  return {
+    maxJobsPerTechnicianPerDay: Number.isFinite(maxJobs) ? Math.max(1, Math.min(20, Math.floor(maxJobs))) : DEFAULT_DISPATCH_SETTINGS.maxJobsPerTechnicianPerDay,
+    slaDueSoonDays: Number.isFinite(dueSoonDays) ? Math.max(0, Math.min(14, Math.floor(dueSoonDays))) : DEFAULT_DISPATCH_SETTINGS.slaDueSoonDays,
+  };
+};
+
+const isOpenJobStatus = (status) => String(status || '').toLowerCase() !== 'completed';
+
+const computeDispatchInsights = (jobs, rawSettings = DEFAULT_DISPATCH_SETTINGS) => {
+  const settings = normalizeDispatchSettings(rawSettings);
+  const today = startOfToday();
+  const byTechDay = new Map();
+  const conflicts = [];
+  const slaRisks = [];
+  let unassignedOpen = 0;
+
+  (jobs || []).forEach((job) => {
+    const scheduledDate = String(job?.scheduledDate || '').trim();
+    const assignedTo = String(job?.assignedTo || '').trim();
+    const status = String(job?.status || '').toLowerCase();
+    const isOpen = isOpenJobStatus(status);
+    const dateObj = toDateAtMidnight(scheduledDate);
+
+    if (isOpen && !assignedTo) {
+      unassignedOpen += 1;
+    }
+
+    if (isOpen && assignedTo && scheduledDate) {
+      const key = `${assignedTo}::${scheduledDate}`;
+      const list = byTechDay.get(key) || [];
+      list.push(job);
+      byTechDay.set(key, list);
+    }
+
+    if (!isOpen || !dateObj) return;
+
+    if (dateObj < today) {
+      slaRisks.push({ severity: 'high', job });
+      return;
+    }
+
+    const dueSoonCutoff = new Date(today.getTime() + (settings.slaDueSoonDays * 24 * 60 * 60 * 1000));
+    if ((status === 'new' || status === 'assigned') && dateObj <= dueSoonCutoff) {
+      slaRisks.push({ severity: 'medium', job });
+    }
+  });
+
+  for (const [key, list] of byTechDay.entries()) {
+    if (list.length <= settings.maxJobsPerTechnicianPerDay) continue;
+    const [technician, date] = key.split('::');
+    const overflow = list.length - settings.maxJobsPerTechnicianPerDay;
+    conflicts.push({
+      technician,
+      date,
+      count: list.length,
+      severity: overflow >= 2 ? 'high' : 'medium',
+      jobs: list
+    });
+  }
+
+  conflicts.sort((a, b) => b.count - a.count);
+  slaRisks.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1));
+
+  return {
+    conflicts,
+    slaRisks,
+    unassignedOpen
+  };
+};
+
+const buildJobsDrilldownQuery = ({ riskType, technician, date, jobId, dueSoonDays }) => {
+  const params = new URLSearchParams();
+  if (riskType) params.set('riskType', String(riskType));
+  if (technician) params.set('technician', String(technician));
+  if (date) params.set('date', String(date));
+  if (jobId) params.set('jobId', String(jobId));
+  if (dueSoonDays !== undefined && dueSoonDays !== null && dueSoonDays !== '') {
+    params.set('dueSoonDays', String(dueSoonDays));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : '';
+};
+
+const parseJobsDrilldown = (search) => {
+  const params = new URLSearchParams(search || '');
+  const riskType = String(params.get('riskType') || '').trim().toLowerCase();
+  const technician = String(params.get('technician') || '').trim();
+  const date = String(params.get('date') || '').trim();
+  const jobId = String(params.get('jobId') || '').trim();
+  const dueSoonDaysRaw = Number(params.get('dueSoonDays'));
+  const dueSoonDays = Number.isFinite(dueSoonDaysRaw)
+    ? Math.max(0, Math.min(14, Math.floor(dueSoonDaysRaw)))
+    : DEFAULT_DISPATCH_SETTINGS.slaDueSoonDays;
+
+  const validRiskTypes = new Set(['conflict', 'sla', 'sla_overdue', 'sla_due', 'unassigned']);
+  return {
+    active: Boolean(riskType || technician || date || jobId),
+    riskType: validRiskTypes.has(riskType) ? riskType : '',
+    technician,
+    date,
+    jobId,
+    dueSoonDays,
+  };
+};
+
+const buildJobsDrilldownLabel = (drilldown) => {
+  if (!drilldown?.active) return '';
+  if (drilldown.jobId) return `Focused on job ${drilldown.jobId}.`;
+  if (drilldown.riskType === 'conflict') {
+    if (drilldown.technician && drilldown.date) return `Conflict focus: ${drilldown.technician} on ${drilldown.date}.`;
+    return 'Conflict focus.';
+  }
+  if (drilldown.riskType === 'unassigned') return 'Unassigned open jobs focus.';
+  if (drilldown.riskType === 'sla_overdue') return 'SLA overdue jobs focus.';
+  if (drilldown.riskType === 'sla_due') return `SLA due-soon focus (next ${drilldown.dueSoonDays} day(s)).`;
+  if (drilldown.riskType === 'sla') return `SLA risk focus (overdue + next ${drilldown.dueSoonDays} day(s)).`;
+  return 'Focused job list.';
+};
+
 // ============== DASHBOARD PAGE ==============
 function DashboardPage({ token, user }) {
+  const navigate = useNavigate();
   const [summary, setSummary] = useState(null);
+  const [kpis, setKpis] = useState(null);
+  const [scheduledJobs, setScheduledJobs] = useState([]);
+  const [dispatchSettings, setDispatchSettings] = useState(DEFAULT_DISPATCH_SETTINGS);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -498,8 +598,18 @@ function DashboardPage({ token, user }) {
       setLoading(true);
       try {
         setError('');
-        const data = await apiFetch('/api/dashboard/summary', { token });
-        if (!cancelled) setSummary(data);
+        const [summaryData, scheduleData, settingsData, kpiData] = await Promise.all([
+          apiFetch('/api/dashboard/summary', { token }),
+          apiFetch('/api/schedule', { token }),
+          apiFetch('/api/settings/dispatch', { token }),
+          apiFetch('/api/dashboard/kpis', { token }),
+        ]);
+        if (!cancelled) {
+          setSummary(summaryData);
+          setKpis(kpiData || null);
+          setScheduledJobs(Array.isArray(scheduleData) ? scheduleData : []);
+          setDispatchSettings(normalizeDispatchSettings(settingsData || {}));
+        }
       } catch (e) {
         if (!cancelled) setError(e.message || 'Failed to load dashboard');
       } finally {
@@ -516,6 +626,10 @@ function DashboardPage({ token, user }) {
     { key: 'inProgressJobs', label: 'In Progress', color: 'progress', icon: '🔧' },
     { key: 'completedJobs', label: 'Completed', color: 'completed', icon: '✅' },
   ];
+  const insights = useMemo(() => computeDispatchInsights(scheduledJobs, dispatchSettings), [scheduledJobs, dispatchSettings]);
+  const handleRiskDrilldown = useCallback((payload) => {
+    navigate(`/jobs${buildJobsDrilldownQuery(payload)}`);
+  }, [navigate]);
 
   return (
     <section className="card">
@@ -580,7 +694,109 @@ function DashboardPage({ token, user }) {
                 </div>
               </div>
             )}
+            <div className={`stat-card ${insights.slaRisks.length > 0 ? 'pending' : ''}`}>
+              <span className="stat-icon">⏱️</span>
+              <div className="stat-info">
+                <span className="stat-value">{insights.slaRisks.length}</span>
+                <span className="stat-label">SLA Risks</span>
+              </div>
+            </div>
+            <div className={`stat-card ${insights.conflicts.length > 0 ? 'pending' : ''}`}>
+              <span className="stat-icon">⚠️</span>
+              <div className="stat-info">
+                <span className="stat-value">{insights.conflicts.length}</span>
+                <span className="stat-label">Dispatch Conflicts</span>
+              </div>
+            </div>
           </div>
+
+          {(insights.conflicts.length > 0 || insights.slaRisks.length > 0 || insights.unassignedOpen > 0) && (
+            <div className="dashboard-section">
+              <h2>Dispatch Risk Board</h2>
+              <div className="risk-board">
+                {insights.conflicts.slice(0, 5).map((conflict) => (
+                  <button
+                    key={`${conflict.technician}-${conflict.date}`}
+                    type="button"
+                    className={`risk-item risk-item-btn ${conflict.severity === 'high' ? 'high' : 'medium'}`}
+                    onClick={() => handleRiskDrilldown({
+                      riskType: 'conflict',
+                      technician: conflict.technician,
+                      date: conflict.date,
+                    })}
+                  >
+                    <strong>Conflict</strong>
+                    <span>{conflict.technician} has {conflict.count} jobs on {conflict.date}</span>
+                  </button>
+                ))}
+                {insights.slaRisks.slice(0, 5).map((risk) => (
+                  <button
+                    key={risk.job.id}
+                    type="button"
+                    className={`risk-item risk-item-btn ${risk.severity === 'high' ? 'high' : 'medium'}`}
+                    onClick={() => handleRiskDrilldown({
+                      riskType: risk.severity === 'high' ? 'sla_overdue' : 'sla_due',
+                      jobId: risk.job.id,
+                      dueSoonDays: dispatchSettings.slaDueSoonDays,
+                    })}
+                  >
+                    <strong>{risk.severity === 'high' ? 'Overdue' : 'Due Today'}</strong>
+                    <span>{risk.job.id}: {risk.job.title}</span>
+                  </button>
+                ))}
+                {insights.unassignedOpen > 0 && (
+                  <button
+                    type="button"
+                    className="risk-item risk-item-btn medium"
+                    onClick={() => handleRiskDrilldown({ riskType: 'unassigned' })}
+                  >
+                    <strong>Unassigned Open Jobs</strong>
+                    <span>{insights.unassignedOpen} open jobs are not assigned</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {kpis ? (
+            <div className="dashboard-section">
+              <h2>SLA and Operational KPIs</h2>
+              <div className="kpi-grid">
+                <div className="kpi-card">
+                  <span className="kpi-label">SLA On-Time Completion</span>
+                  <strong className="kpi-value">{kpis.sla?.onTimeCompletionRatePct ?? 0}%</strong>
+                </div>
+                <div className="kpi-card">
+                  <span className="kpi-label">Overdue Open Jobs</span>
+                  <strong className="kpi-value">{kpis.sla?.overdueOpen ?? 0}</strong>
+                </div>
+                <div className="kpi-card">
+                  <span className="kpi-label">Due Soon Open Jobs</span>
+                  <strong className="kpi-value">{kpis.sla?.dueSoonOpen ?? 0}</strong>
+                </div>
+                <div className="kpi-card">
+                  <span className="kpi-label">Avg Resolution (hours)</span>
+                  <strong className="kpi-value">{kpis.operations?.avgResolutionHours ?? 0}</strong>
+                </div>
+                <div className="kpi-card">
+                  <span className="kpi-label">Check-In Compliance</span>
+                  <strong className="kpi-value">{kpis.operations?.checkinCompliancePct ?? 0}%</strong>
+                </div>
+                <div className="kpi-card">
+                  <span className="kpi-label">Completion Proof Coverage</span>
+                  <strong className="kpi-value">{kpis.sla?.completionProofCoveragePct ?? 0}%</strong>
+                </div>
+                <div className="kpi-card">
+                  <span className="kpi-label">Quick Close (7d)</span>
+                  <strong className="kpi-value">{kpis.operations?.quickClose7d ?? 0}</strong>
+                </div>
+                <div className="kpi-card">
+                  <span className="kpi-label">Backlog Over 3 Days</span>
+                  <strong className="kpi-value">{(kpis.backlog?.agingBuckets?.over7Days ?? 0) + (kpis.backlog?.agingBuckets?.over3Days ?? 0)}</strong>
+                </div>
+              </div>
+            </div>
+          ) : null}
           
           {summary.technicianStats && summary.technicianStats.length > 0 && (
             <div className="dashboard-section">
@@ -770,7 +986,7 @@ function CustomersPage({ token }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editingId ? '✏️ Edit Customer' : '➕ New Customer'}</h2>
-              <button className="modal-close" onClick={cancelForm}>×</button>
+              <button type="button" className="modal-close" onClick={cancelForm} aria-label="Close dialog">×</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-section">
@@ -861,19 +1077,31 @@ function CustomersPage({ token }) {
 }
 
 // ============== SCHEDULE PAGE ==============
-function SchedulePage({ token }) {
+function SchedulePage({ token, user }) {
+  const navigate = useNavigate();
   const [schedule, setSchedule] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState('list');
   const [selectedDate, setSelectedDate] = useState(null);
+  const [dispatchSettings, setDispatchSettings] = useState(DEFAULT_DISPATCH_SETTINGS);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSuccess, setSettingsSuccess] = useState('');
+  const [optimization, setOptimization] = useState(null);
+  const [loadingOptimization, setLoadingOptimization] = useState(false);
+  const [applyingOptimizationId, setApplyingOptimizationId] = useState('');
+  const canEditDispatchSettings = user?.role === 'admin' || user?.role === 'dispatcher';
 
   const fetchSchedule = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await apiFetch('/api/schedule', { token });
+      const [data, settingsData] = await Promise.all([
+        apiFetch('/api/schedule', { token }),
+        apiFetch('/api/settings/dispatch', { token }),
+      ]);
       setSchedule(Array.isArray(data) ? data : []);
+      setDispatchSettings(normalizeDispatchSettings(settingsData || {}));
     } catch (e) {
       setError(e.message || 'Failed to load schedule');
     } finally {
@@ -884,6 +1112,25 @@ function SchedulePage({ token }) {
   useEffect(() => {
     fetchSchedule();
   }, [fetchSchedule]);
+
+  const loadOptimization = useCallback(async () => {
+    if (!canEditDispatchSettings) return;
+    setLoadingOptimization(true);
+    try {
+      const data = await apiFetch('/api/dispatch/optimize', { token });
+      setOptimization(data || null);
+    } catch (e) {
+      setError(e.message || 'Failed to load optimization suggestions');
+    } finally {
+      setLoadingOptimization(false);
+    }
+  }, [canEditDispatchSettings, token]);
+
+  useEffect(() => {
+    if (!canEditDispatchSettings) return;
+    if (loading) return;
+    loadOptimization();
+  }, [canEditDispatchSettings, loading, loadOptimization]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -928,6 +1175,83 @@ function SchedulePage({ token }) {
   }, [schedule]);
 
   const sortedDates = Object.keys(jobsByDate).sort();
+  const normalizedDispatchSettings = useMemo(
+    () => normalizeDispatchSettings(dispatchSettings),
+    [dispatchSettings]
+  );
+  const insights = useMemo(
+    () => computeDispatchInsights(schedule, normalizedDispatchSettings),
+    [schedule, normalizedDispatchSettings]
+  );
+  const conflictIndex = useMemo(() => {
+    const map = new Map();
+    insights.conflicts.forEach((conflict) => {
+      map.set(`${conflict.technician}::${conflict.date}`, conflict);
+    });
+    return map;
+  }, [insights.conflicts]);
+
+  const getJobRiskLabel = (job) => {
+    const dateObj = toDateAtMidnight(job?.scheduledDate);
+    if (!dateObj || !isOpenJobStatus(job?.status)) return '';
+    const today = startOfToday();
+    if (dateObj < today) return 'overdue';
+    const status = String(job?.status || '').toLowerCase();
+    const dueSoonCutoff = new Date(today.getTime() + (normalizedDispatchSettings.slaDueSoonDays * 24 * 60 * 60 * 1000));
+    if ((status === 'new' || status === 'assigned') && dateObj <= dueSoonCutoff) return 'due-today';
+    return '';
+  };
+
+  const saveDispatchSettings = async (event) => {
+    event.preventDefault();
+    if (!canEditDispatchSettings) return;
+    setSavingSettings(true);
+    setSettingsSuccess('');
+    setError('');
+    try {
+      const payload = normalizeDispatchSettings(dispatchSettings);
+      const saved = await apiFetch('/api/settings/dispatch', {
+        token,
+        method: 'PUT',
+        body: payload,
+      });
+      setDispatchSettings(normalizeDispatchSettings(saved || payload));
+      setSettingsSuccess('Dispatch settings saved.');
+    } catch (e) {
+      setError(e.message || 'Failed to save dispatch settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+  const handleScheduleDrilldown = useCallback((payload) => {
+    navigate(`/jobs${buildJobsDrilldownQuery(payload)}`);
+  }, [navigate]);
+
+  const applyOptimizationSuggestion = async (suggestion) => {
+    if (!suggestion || !suggestion.id) return;
+    setApplyingOptimizationId(suggestion.id);
+    setError('');
+    setSettingsSuccess('');
+    try {
+      await apiFetch('/api/dispatch/optimize/apply', {
+        token,
+        method: 'POST',
+        body: {
+          jobId: suggestion.jobId,
+          type: suggestion.type,
+          suggestedAssignee: suggestion.suggestedAssignee,
+          suggestedDate: suggestion.suggestedDate,
+        },
+      });
+      await fetchSchedule();
+      await loadOptimization();
+      setSettingsSuccess(`Applied optimization for ${suggestion.jobId}.`);
+    } catch (e) {
+      setError(e.message || 'Failed to apply optimization');
+    } finally {
+      setApplyingOptimizationId('');
+    }
+  };
 
   return (
     <section className="card schedule-page">
@@ -935,27 +1259,148 @@ function SchedulePage({ token }) {
         <h1>📅 Schedule / Calendar</h1>
         <div className="view-toggle">
           <button 
+            type="button"
             className={`toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
             onClick={() => setViewMode('list')}
+            aria-pressed={viewMode === 'list'}
+            aria-label="Show schedule list view"
           >
             📋 List
           </button>
           <button 
+            type="button"
             className={`toggle-btn ${viewMode === 'calendar' ? 'active' : ''}`}
             onClick={() => setViewMode('calendar')}
+            aria-pressed={viewMode === 'calendar'}
+            aria-label="Show schedule calendar view"
           >
             📆 Calendar
           </button>
         </div>
       </div>
 
-      {error ? <div className="form-error-box">{error}</div> : null}
+      {error ? <div className="form-error-box" role="alert">{error}</div> : null}
+      {settingsSuccess ? <div className="form-success-box" role="status" aria-live="polite">{settingsSuccess}</div> : null}
+
+      {canEditDispatchSettings ? (
+        <form className="dispatch-settings" onSubmit={saveDispatchSettings}>
+          <div className="dispatch-settings-grid">
+            <label>
+              Max jobs per technician/day
+              <input
+                type="number"
+                min="1"
+                max="20"
+                value={dispatchSettings.maxJobsPerTechnicianPerDay}
+                onChange={(e) => setDispatchSettings((prev) => ({ ...prev, maxJobsPerTechnicianPerDay: e.target.value }))}
+              />
+            </label>
+            <label>
+              SLA due soon window (days)
+              <input
+                type="number"
+                min="0"
+                max="14"
+                value={dispatchSettings.slaDueSoonDays}
+                onChange={(e) => setDispatchSettings((prev) => ({ ...prev, slaDueSoonDays: e.target.value }))}
+              />
+            </label>
+            <button type="submit" className="btn-secondary" disabled={savingSettings}>
+              {savingSettings ? 'Saving...' : 'Save Dispatch Rules'}
+            </button>
+          </div>
+        </form>
+      ) : null}
 
       {loading ? <p className="loading">Loading schedule...</p> : null}
       {!loading && !schedule.length ? (
         <div className="empty-state">
           <p>No scheduled jobs.</p>
           <p className="hint">Add scheduled dates to jobs to see them here.</p>
+        </div>
+      ) : null}
+      {!loading && schedule.length > 0 && (
+        <div className="schedule-alert-strip" role="group" aria-label="Schedule risk filters">
+          <button
+            type="button"
+            className={insights.slaRisks.length > 0 ? 'alert-pill alert-pill-btn danger' : 'alert-pill alert-pill-btn'}
+            disabled={insights.slaRisks.length === 0}
+            aria-label={`Filter jobs by SLA risk. ${insights.slaRisks.length} risk jobs.`}
+            onClick={() => handleScheduleDrilldown({
+              riskType: 'sla',
+              dueSoonDays: normalizedDispatchSettings.slaDueSoonDays,
+            })}
+          >
+            SLA Risks: {insights.slaRisks.length}
+          </button>
+          <button
+            type="button"
+            className={insights.conflicts.length > 0 ? 'alert-pill alert-pill-btn warning' : 'alert-pill alert-pill-btn'}
+            disabled={insights.conflicts.length === 0}
+            aria-label={`Filter jobs by technician conflicts. ${insights.conflicts.length} conflicts.`}
+            onClick={() => handleScheduleDrilldown({ riskType: 'conflict' })}
+          >
+            Conflicts: {insights.conflicts.length}
+          </button>
+          <button
+            type="button"
+            className={insights.unassignedOpen > 0 ? 'alert-pill alert-pill-btn warning' : 'alert-pill alert-pill-btn'}
+            disabled={insights.unassignedOpen === 0}
+            aria-label={`Filter unassigned open jobs. ${insights.unassignedOpen} unassigned jobs.`}
+            onClick={() => handleScheduleDrilldown({ riskType: 'unassigned' })}
+          >
+            Unassigned Open: {insights.unassignedOpen}
+          </button>
+          <span className="alert-pill">
+            Capacity Rule: {normalizedDispatchSettings.maxJobsPerTechnicianPerDay}/tech/day
+          </span>
+        </div>
+      )}
+      {canEditDispatchSettings && !loading && schedule.length > 0 ? (
+        <div className="optimization-panel">
+          <div className="optimization-header">
+            <h3>Dispatch Optimization</h3>
+            <button
+              type="button"
+              className="btn-secondary btn-small"
+              onClick={loadOptimization}
+              disabled={loadingOptimization}
+              aria-label="Refresh dispatch optimization suggestions"
+            >
+              {loadingOptimization ? 'Analyzing...' : 'Refresh Suggestions'}
+            </button>
+          </div>
+          {optimization?.summary ? (
+            <div className="optimization-summary">
+              <span className="alert-pill">Suggestions: {optimization.summary.suggestions}</span>
+              <span className="alert-pill">Assign: {optimization.summary.assignmentSuggestions}</span>
+              <span className="alert-pill">Reschedule: {optimization.summary.rescheduleSuggestions}</span>
+            </div>
+          ) : null}
+          {optimization?.suggestions?.length ? (
+            <div className="optimization-list">
+              {optimization.suggestions.slice(0, 8).map((item) => (
+                <article key={item.id} className={`optimization-item ${item.severity || 'low'}`}>
+                  <div className="optimization-item-main">
+                    <strong>{item.jobId}</strong>
+                    <span>{item.type === 'assign' ? `Assign to ${item.suggestedAssignee}` : `Move to ${item.suggestedDate}`}</span>
+                    <small>{item.reason}</small>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary btn-small"
+                    onClick={() => applyOptimizationSuggestion(item)}
+                    disabled={applyingOptimizationId === item.id}
+                    aria-label={`Apply optimization suggestion for ${item.jobId}`}
+                  >
+                    {applyingOptimizationId === item.id ? 'Applying...' : 'Apply'}
+                  </button>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="hint">No optimization suggestions right now.</p>
+          )}
         </div>
       ) : null}
       
@@ -983,6 +1428,13 @@ function SchedulePage({ token }) {
                         <span>📍 {job.location}</span>
                         {job.assignedTo && <span>🔧 {job.assignedTo}</span>}
                       </div>
+                      <div className="schedule-alerts">
+                        {getJobRiskLabel(job) === 'overdue' ? <span className="mini-alert danger">SLA overdue</span> : null}
+                        {getJobRiskLabel(job) === 'due-today' ? <span className="mini-alert warning">Due today</span> : null}
+                        {job.assignedTo && conflictIndex.get(`${job.assignedTo}::${job.scheduledDate}`) ? (
+                          <span className="mini-alert warning">Tech conflict</span>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1009,6 +1461,8 @@ function SchedulePage({ token }) {
                     <div key={job.id} className={`calendar-job ${getScheduleStatusClass(job.status)}`}>
                       <span className="job-id">{job.id}</span>
                       <span className="job-title">{job.title}</span>
+                      {getJobRiskLabel(job) === 'overdue' ? <span className="calendar-alert danger">Overdue</span> : null}
+                      {getJobRiskLabel(job) !== 'overdue' && getJobRiskLabel(job) === 'due-today' ? <span className="calendar-alert warning">Due today</span> : null}
                     </div>
                   ))}
                 </div>
@@ -1023,8 +1477,11 @@ function SchedulePage({ token }) {
 
 // ============== JOBS PAGE WITH SEARCH & PHOTOS ==============
 function JobsPage({ token, user }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [customers, setCustomers] = useState([]);
+  const [inventory, setInventory] = useState([]);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1033,8 +1490,20 @@ function JobsPage({ token, user }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [showJobDetails, setShowJobDetails] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [techQuickFilter, setTechQuickFilter] = useState('open');
   const [worklogDrafts, setWorklogDrafts] = useState({});
   const [photoTagDrafts, setPhotoTagDrafts] = useState({});
+  const [customerUpdateDrafts, setCustomerUpdateDrafts] = useState({});
+  const [reservationDrafts, setReservationDrafts] = useState({});
+  const [inventoryIntelByJob, setInventoryIntelByJob] = useState({});
+  const [checkoutDraft, setCheckoutDraft] = useState({
+    jobId: '',
+    notes: '',
+    signatureName: '',
+    evidenceSummary: '',
+    customerAccepted: false,
+  });
   const canManageJobs = user.role === 'admin' || user.role === 'dispatcher';
   const isTechnician = user.role === 'technician';
   const canEditWorklog = canManageJobs || isTechnician;
@@ -1053,6 +1522,8 @@ function JobsPage({ token, user }) {
   });
   const [projects, setProjects] = useState([]);
   const [projectTasks, setProjectTasks] = useState({});
+  const drilldown = useMemo(() => parseJobsDrilldown(location.search), [location.search]);
+  const drilldownLabel = useMemo(() => buildJobsDrilldownLabel(drilldown), [drilldown]);
 
   const fetchJobs = useCallback(async () => {
     setLoading(true);
@@ -1076,10 +1547,20 @@ function JobsPage({ token, user }) {
     }
   }, [token]);
 
+  const fetchInventory = useCallback(async () => {
+    try {
+      const data = await apiFetch('/api/inventory', { token });
+      setInventory(Array.isArray(data) ? data : []);
+    } catch (e) {
+      // Ignore inventory fetch errors in jobs page bootstrap
+    }
+  }, [token]);
+
   useEffect(() => {
     fetchJobs();
     fetchCustomers();
-  }, [fetchJobs, fetchCustomers]);
+    fetchInventory();
+  }, [fetchJobs, fetchCustomers, fetchInventory]);
 
   const filteredJobs = useMemo(() => {
     let result = jobs;
@@ -1096,8 +1577,86 @@ function JobsPage({ token, user }) {
     if (statusFilter) {
       result = result.filter(j => j.status === statusFilter);
     }
+    if (drilldown.active) {
+      const today = startOfToday();
+      const dueSoonCutoff = new Date(today.getTime() + (drilldown.dueSoonDays * 24 * 60 * 60 * 1000));
+      result = result.filter((job) => {
+        if (drilldown.jobId && job.id !== drilldown.jobId) return false;
+        const status = String(job?.status || '').toLowerCase();
+        const isOpen = isOpenJobStatus(status);
+        const assignedTo = String(job?.assignedTo || '').trim();
+        const scheduledDate = String(job?.scheduledDate || '').trim();
+        const dateObj = toDateAtMidnight(scheduledDate);
+
+        switch (drilldown.riskType) {
+          case 'conflict':
+            if (!isOpen || !assignedTo || !scheduledDate) return false;
+            if (drilldown.technician && assignedTo !== drilldown.technician) return false;
+            if (drilldown.date && scheduledDate !== drilldown.date) return false;
+            return true;
+          case 'unassigned':
+            return isOpen && !assignedTo;
+          case 'sla_overdue':
+            return isOpen && dateObj && dateObj < today;
+          case 'sla_due':
+            return isOpen && dateObj && dateObj >= today && dateObj <= dueSoonCutoff && (status === 'new' || status === 'assigned');
+          case 'sla':
+            if (!isOpen || !dateObj) return false;
+            if (dateObj < today) return true;
+            return dateObj <= dueSoonCutoff && (status === 'new' || status === 'assigned');
+          default:
+            return true;
+        }
+      });
+    }
     return result;
-  }, [jobs, searchTerm, statusFilter]);
+  }, [jobs, searchTerm, statusFilter, drilldown]);
+
+  const technicianQuickJobs = useMemo(() => {
+    if (!isTechnician) return [];
+    const mine = jobs.filter((job) => job.assignedTo === user.username);
+    if (techQuickFilter === 'needs-checkin') {
+      return mine.filter((job) => !job.checkinTime && job.status !== 'completed');
+    }
+    if (techQuickFilter === 'needs-checkout') {
+      return mine.filter((job) => job.checkinTime && !job.checkoutTime && job.status !== 'completed');
+    }
+    if (techQuickFilter === 'completed') {
+      return mine.filter((job) => job.checkoutTime || job.status === 'completed');
+    }
+    return mine.filter((job) => job.status !== 'completed');
+  }, [isTechnician, jobs, techQuickFilter, user.username]);
+
+  useEffect(() => {
+    if (!drilldown.active || !drilldown.jobId) return;
+    const focusedJob = jobs.find((job) => job.id === drilldown.jobId);
+    if (focusedJob) setShowJobDetails(focusedJob.id);
+  }, [drilldown, jobs]);
+
+  useEffect(() => {
+    if (!showCreateForm && !showCheckoutModal) return undefined;
+
+    const handleEscClose = (event) => {
+      if (event.key !== 'Escape') return;
+      if (showCheckoutModal && !workingId) {
+        setShowCheckoutModal(false);
+        setCheckoutDraft({
+          jobId: '',
+          notes: '',
+          signatureName: '',
+          evidenceSummary: '',
+          customerAccepted: false,
+        });
+        return;
+      }
+      if (showCreateForm) {
+        setShowCreateForm(false);
+      }
+    };
+
+    window.addEventListener('keydown', handleEscClose);
+    return () => window.removeEventListener('keydown', handleEscClose);
+  }, [showCreateForm, showCheckoutModal, workingId]);
 
   const handleCreate = async (event) => {
     event.preventDefault();
@@ -1157,11 +1716,52 @@ function JobsPage({ token, user }) {
     return { tag: 'after', otherText: '' };
   };
 
+  const getReservationDraft = (jobId) => {
+    const existing = reservationDrafts[jobId];
+    if (existing) return existing;
+    return {
+      inventoryId: inventory[0]?.id || '',
+      quantity: 1,
+    };
+  };
+
+  const updateReservationDraft = (jobId, key, value) => {
+    setReservationDrafts((prev) => ({
+      ...prev,
+      [jobId]: {
+        ...getReservationDraft(jobId),
+        [key]: value,
+      },
+    }));
+  };
+
   const updatePhotoTagDraft = (jobId, key, value) => {
     setPhotoTagDrafts((prev) => ({
       ...prev,
       [jobId]: {
         ...getPhotoTagDraft(jobId),
+        [key]: value,
+      },
+    }));
+  };
+
+  const getCustomerUpdateDraft = (jobId) => {
+    const existing = customerUpdateDrafts[jobId];
+    if (existing) return existing;
+    return {
+      templateKey: 'eta_update',
+      channel: 'portal',
+      eta: '',
+      delayReason: '',
+      customMessage: '',
+    };
+  };
+
+  const updateCustomerUpdateDraft = (jobId, key, value) => {
+    setCustomerUpdateDrafts((prev) => ({
+      ...prev,
+      [jobId]: {
+        ...getCustomerUpdateDraft(jobId),
         [key]: value,
       },
     }));
@@ -1256,14 +1856,83 @@ function JobsPage({ token, user }) {
     }
   };
 
-  const handleCheckout = async (jobId) => {
-    const finalNotes = prompt('Enter job completion notes:') || '';
+  const openCheckoutModal = (jobId) => {
+    setCheckoutDraft({
+      jobId,
+      notes: '',
+      signatureName: '',
+      evidenceSummary: '',
+      customerAccepted: false,
+    });
+    setShowCheckoutModal(true);
+  };
+
+  const handleQuickClose = async (jobId) => {
+    const confirmed = window.confirm(`Quick close ${jobId}? This will complete the job immediately.`);
+    if (!confirmed) return;
+    setWorkingId(jobId);
+    setSuccess('');
+    setError('');
+    try {
+      await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/quick-close`, {
+        token,
+        method: 'POST',
+        body: { notes: 'Quick close from technician mobile flow' },
+      });
+      await fetchJobs();
+      setSuccess(`Quick closed ${jobId}.`);
+    } catch (e) {
+      setError(e.message || 'Failed to quick close job');
+    } finally {
+      setWorkingId('');
+    }
+  };
+
+  const closeCheckoutModal = () => {
+    if (workingId) return;
+    setShowCheckoutModal(false);
+    setCheckoutDraft({
+      jobId: '',
+      notes: '',
+      signatureName: '',
+      evidenceSummary: '',
+      customerAccepted: false,
+    });
+  };
+
+  const handleCheckout = async (event) => {
+    event.preventDefault();
+    const jobId = checkoutDraft.jobId;
+    if (!jobId) return;
+    const finalNotes = String(checkoutDraft.notes || '').trim();
+    const signatureName = String(checkoutDraft.signatureName || '').trim();
+    const evidenceSummary = String(checkoutDraft.evidenceSummary || '').trim();
+    const customerAccepted = checkoutDraft.customerAccepted === true;
     setWorkingId(jobId);
     setSuccess('');
     try {
-      await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/checkout`, { token, method: 'POST', body: { notes: finalNotes } });
+      await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/checkout`, {
+        token,
+        method: 'POST',
+        body: {
+          notes: finalNotes,
+          completionProof: {
+            signatureName,
+            evidenceSummary,
+            customerAccepted,
+          },
+        },
+      });
       await fetchJobs();
       setSuccess(`Completed ${jobId}.`);
+      setShowCheckoutModal(false);
+      setCheckoutDraft({
+        jobId: '',
+        notes: '',
+        signatureName: '',
+        evidenceSummary: '',
+        customerAccepted: false,
+      });
     } catch (e) {
       setError(e.message || 'Failed to check out');
     } finally {
@@ -1348,6 +2017,75 @@ function JobsPage({ token, user }) {
     }
   };
 
+  const loadInventoryIntelligence = async (jobId) => {
+    try {
+      const data = await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/inventory/intelligence`, { token });
+      setInventoryIntelByJob((prev) => ({ ...prev, [jobId]: data || null }));
+      return data;
+    } catch (e) {
+      setError(e.message || 'Failed to load inventory intelligence');
+      return null;
+    }
+  };
+
+  const handleReserveInventory = async (jobId) => {
+    const draftValues = getReservationDraft(jobId);
+    if (!draftValues.inventoryId) {
+      setError('Select an inventory item to reserve');
+      return;
+    }
+    setWorkingId(jobId);
+    setError('');
+    setSuccess('');
+    try {
+      await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/inventory/reserve`, {
+        token,
+        method: 'POST',
+        body: {
+          inventoryId: draftValues.inventoryId,
+          quantity: Number(draftValues.quantity || 0),
+        },
+      });
+      await fetchInventory();
+      await loadInventoryIntelligence(jobId);
+      setSuccess(`Inventory reserved for ${jobId}.`);
+    } catch (e) {
+      setError(e.message || 'Failed to reserve inventory');
+    } finally {
+      setWorkingId('');
+    }
+  };
+
+  const handleSendCustomerUpdate = async (job) => {
+    const draftValues = getCustomerUpdateDraft(job.id);
+    setWorkingId(job.id);
+    setError('');
+    setSuccess('');
+    try {
+      const payload = {
+        templateKey: draftValues.templateKey,
+        channel: draftValues.channel,
+        eta: draftValues.eta,
+        delayReason: draftValues.delayReason,
+        customMessage: draftValues.customMessage,
+      };
+      await apiFetch(`/api/jobs/${encodeURIComponent(job.id)}/customer-update`, {
+        token,
+        method: 'POST',
+        body: payload,
+      });
+      setSuccess(`Customer update sent for ${job.id}.`);
+      setCustomerUpdateDrafts((prev) => ({
+        ...prev,
+        [job.id]: { ...getCustomerUpdateDraft(job.id), customMessage: '', delayReason: '' },
+      }));
+    } catch (e) {
+      setError(e.message || 'Failed to send customer update');
+    } finally {
+      setWorkingId('');
+    }
+  };
+
   return (
     <section className="card">
       <div className="page-header">
@@ -1363,15 +2101,125 @@ function JobsPage({ token, user }) {
         </div>
       </div>
 
-      {error ? <div className="form-error-box">{error}</div> : null}
-      {success ? <div className="form-success-box">{success}</div> : null}
+      {error ? <div className="form-error-box" role="alert">{error}</div> : null}
+      {success ? <div className="form-success-box" role="status" aria-live="polite">{success}</div> : null}
+      {drilldown.active ? (
+        <div className="drilldown-banner">
+          <span>{drilldownLabel}</span>
+          <button type="button" className="btn-secondary btn-small" onClick={() => navigate('/jobs')}>
+            Clear focus
+          </button>
+        </div>
+      ) : null}
+
+      {isTechnician ? (
+        <div className="tech-quick-panel">
+          <div className="tech-quick-header">
+            <strong>Technician Quick Actions</strong>
+            <div className="view-toggle">
+              <button
+                type="button"
+                className={`toggle-btn ${techQuickFilter === 'open' ? 'active' : ''}`}
+                onClick={() => setTechQuickFilter('open')}
+                aria-pressed={techQuickFilter === 'open'}
+              >
+                Open
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn ${techQuickFilter === 'needs-checkin' ? 'active' : ''}`}
+                onClick={() => setTechQuickFilter('needs-checkin')}
+                aria-pressed={techQuickFilter === 'needs-checkin'}
+              >
+                Check In
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn ${techQuickFilter === 'needs-checkout' ? 'active' : ''}`}
+                onClick={() => setTechQuickFilter('needs-checkout')}
+                aria-pressed={techQuickFilter === 'needs-checkout'}
+              >
+                Check Out
+              </button>
+              <button
+                type="button"
+                className={`toggle-btn ${techQuickFilter === 'completed' ? 'active' : ''}`}
+                onClick={() => setTechQuickFilter('completed')}
+                aria-pressed={techQuickFilter === 'completed'}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+          {technicianQuickJobs.length === 0 ? (
+            <p className="hint">No jobs in this quick filter.</p>
+          ) : (
+            <div className="tech-quick-list">
+              {technicianQuickJobs.slice(0, 8).map((job) => (
+                <article key={`quick-${job.id}`} className="tech-quick-item">
+                  <div className="tech-quick-meta">
+                    <strong>{job.id}</strong>
+                    <span>{job.title}</span>
+                    {job.scheduledDate ? <small>{job.scheduledDate}</small> : null}
+                  </div>
+                  <div className="tech-quick-actions">
+                    {!job.checkinTime && job.status !== 'completed' ? (
+                      <button
+                        type="button"
+                        className="btn-success btn-small"
+                        onClick={() => handleCheckin(job.id)}
+                        disabled={workingId === job.id}
+                      >
+                        Check In
+                      </button>
+                    ) : null}
+                    {job.checkinTime && !job.checkoutTime && job.status !== 'completed' ? (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-primary btn-small"
+                          onClick={() => openCheckoutModal(job.id)}
+                          disabled={workingId === job.id}
+                        >
+                          Complete
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary btn-small"
+                          onClick={() => handleQuickClose(job.id)}
+                          disabled={workingId === job.id}
+                        >
+                          Quick Close
+                        </button>
+                      </>
+                    ) : null}
+                    {(job.checkoutTime || job.status === 'completed') ? (
+                      <span className="completed-badge">Done</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      onClick={() => setShowJobDetails(showJobDetails === job.id ? null : job.id)}
+                      aria-expanded={showJobDetails === job.id}
+                      aria-controls={`job-details-${job.id}`}
+                      aria-label={showJobDetails === job.id ? `Hide details for ${job.id}` : `Show details for ${job.id}`}
+                    >
+                      {showJobDetails === job.id ? 'Hide' : 'Open'}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {showCreateForm && (
         <div className="modal-backdrop" onClick={() => setShowCreateForm(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="create-job-dialog-title">
             <div className="modal-header">
-              <h2>➕ Create New Job</h2>
-              <button className="modal-close" onClick={() => setShowCreateForm(false)}>×</button>
+              <h2 id="create-job-dialog-title">➕ Create New Job</h2>
+              <button type="button" className="modal-close" onClick={() => setShowCreateForm(false)} aria-label="Close dialog">×</button>
             </div>
             <form onSubmit={handleCreate}>
               <div className="form-section">
@@ -1465,6 +2313,7 @@ function JobsPage({ token, user }) {
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="search-input"
+          aria-label="Search jobs"
         />
         <select 
           value={statusFilter}
@@ -1511,6 +2360,9 @@ function JobsPage({ token, user }) {
                     className="btn-icon"
                     onClick={() => setShowJobDetails(showJobDetails === job.id ? null : job.id)}
                     title={showJobDetails === job.id ? 'Hide details' : 'Show details'}
+                    aria-expanded={showJobDetails === job.id}
+                    aria-controls={`job-details-${job.id}`}
+                    aria-label={showJobDetails === job.id ? `Hide details for ${job.id}` : `Show details for ${job.id}`}
                   >
                     {showJobDetails === job.id ? 'Hide' : 'Details'}
                   </button>
@@ -1542,7 +2394,7 @@ function JobsPage({ token, user }) {
               )}
 
               {showJobDetails === job.id && (
-                <div className="job-details">
+                <div id={`job-details-${job.id}`} className="job-details">
                   <div className="job-meta-grid">
                     <label>
                       Priority
@@ -1612,6 +2464,58 @@ function JobsPage({ token, user }) {
                       <strong>Notes:</strong> {job.notes}
                     </div>
                   )}
+
+                  {(canManageJobs || (isTechnician && job.assignedTo === user.username)) ? (
+                    <div className="customer-update-controls">
+                      <span className="photo-upload-title">Inventory Reservation</span>
+                      <div className="photo-upload-row">
+                        <select
+                          value={getReservationDraft(job.id).inventoryId}
+                          onChange={(e) => updateReservationDraft(job.id, 'inventoryId', e.target.value)}
+                          disabled={workingId === job.id}
+                        >
+                          <option value="">Select item</option>
+                          {inventory.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name} ({item.id}) qty:{item.quantity}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="0.1"
+                          value={getReservationDraft(job.id).quantity}
+                          onChange={(e) => updateReservationDraft(job.id, 'quantity', e.target.value)}
+                          disabled={workingId === job.id}
+                        />
+                        <button
+                          type="button"
+                          className="btn-secondary btn-small"
+                          onClick={() => handleReserveInventory(job.id)}
+                          disabled={workingId === job.id}
+                        >
+                          Reserve
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          onClick={() => loadInventoryIntelligence(job.id)}
+                          disabled={workingId === job.id}
+                          aria-label={`Refresh inventory intelligence for ${job.id}`}
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                      {inventoryIntelByJob[job.id]?.summary ? (
+                        <span className="photo-upload-hint">
+                          Open reservations: {inventoryIntelByJob[job.id].summary.openReservations} | Reserved qty: {inventoryIntelByJob[job.id].summary.reservedQty} | Consumed qty: {inventoryIntelByJob[job.id].summary.consumedQty}
+                        </span>
+                      ) : (
+                        <span className="photo-upload-hint">Reserve inventory items before completion; reservations are auto-consumed on checkout.</span>
+                      )}
+                    </div>
+                  ) : null}
 
                   <div className="job-worklog">
                     <strong>Worklog</strong>
@@ -1695,6 +2599,7 @@ function JobsPage({ token, user }) {
                                 onClick={() => handlePhotoRemove(job.id, photo.id || String(idx))}
                                 title="Remove photo"
                                 disabled={workingId === job.id}
+                                aria-label={`Remove photo ${idx + 1} from ${job.id}`}
                               >
                                 ×
                               </button>
@@ -1718,7 +2623,74 @@ function JobsPage({ token, user }) {
                     </div>
                   )}
 
+                  {job.completionProof ? (
+                    <div className="job-notes">
+                      <strong>Completion Proof:</strong>{' '}
+                      {job.completionProof.signatureName ? `Signed by ${job.completionProof.signatureName}. ` : ''}
+                      {job.completionProof.customerAccepted ? 'Customer accepted. ' : ''}
+                      {job.completionProof.evidenceSummary || 'No additional evidence summary.'}
+                    </div>
+                  ) : null}
+
                   <div className="job-action-buttons">
+                    {(canManageJobs || (isTechnician && job.assignedTo === user.username)) ? (
+                      <div className="customer-update-controls">
+                        <span className="photo-upload-title">Customer Update</span>
+                        <div className="photo-upload-row">
+                          <select
+                            value={getCustomerUpdateDraft(job.id).templateKey}
+                            onChange={(e) => updateCustomerUpdateDraft(job.id, 'templateKey', e.target.value)}
+                            disabled={workingId === job.id}
+                          >
+                            <option value="eta_update">ETA Update</option>
+                            <option value="technician_enroute">Technician En Route</option>
+                            <option value="work_started">Work Started</option>
+                            <option value="work_completed">Work Completed</option>
+                            <option value="delay_notice">Delay Notice</option>
+                          </select>
+                          <select
+                            value={getCustomerUpdateDraft(job.id).channel}
+                            onChange={(e) => updateCustomerUpdateDraft(job.id, 'channel', e.target.value)}
+                            disabled={workingId === job.id}
+                          >
+                            <option value="portal">Portal</option>
+                            <option value="email">Email</option>
+                            <option value="sms">SMS</option>
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="ETA (optional)"
+                            value={getCustomerUpdateDraft(job.id).eta}
+                            onChange={(e) => updateCustomerUpdateDraft(job.id, 'eta', e.target.value)}
+                            disabled={workingId === job.id}
+                          />
+                          {getCustomerUpdateDraft(job.id).templateKey === 'delay_notice' ? (
+                            <input
+                              type="text"
+                              placeholder="Delay reason"
+                              value={getCustomerUpdateDraft(job.id).delayReason}
+                              onChange={(e) => updateCustomerUpdateDraft(job.id, 'delayReason', e.target.value)}
+                              disabled={workingId === job.id}
+                            />
+                          ) : null}
+                          <input
+                            type="text"
+                            placeholder="Optional custom message override"
+                            value={getCustomerUpdateDraft(job.id).customMessage}
+                            onChange={(e) => updateCustomerUpdateDraft(job.id, 'customMessage', e.target.value)}
+                            disabled={workingId === job.id}
+                          />
+                          <button
+                            type="button"
+                            className="btn-secondary photo-add-btn"
+                            onClick={() => handleSendCustomerUpdate(job)}
+                            disabled={workingId === job.id}
+                          >
+                            Send Update
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="photo-upload-controls">
                       <span className="photo-upload-title">Photo Upload</span>
                       <div className="photo-upload-row">
@@ -1795,7 +2767,7 @@ function JobsPage({ token, user }) {
                     <button
                       type="button"
                       className="btn-primary"
-                      onClick={() => handleCheckout(job.id)}
+                      onClick={() => openCheckoutModal(job.id)}
                       disabled={workingId === job.id}
                     >
                       ✅ Complete Job
@@ -1810,6 +2782,74 @@ function JobsPage({ token, user }) {
           ))}
         </div>
       )}
+
+      {showCheckoutModal ? (
+        <div className="modal-backdrop" onClick={closeCheckoutModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="job-complete-dialog-title">
+            <div className="modal-header">
+              <h2 id="job-complete-dialog-title">Complete Job {checkoutDraft.jobId}</h2>
+              <button type="button" className="modal-close" onClick={closeCheckoutModal} disabled={Boolean(workingId)} aria-label="Close dialog">
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleCheckout}>
+                <div className="form-section">
+                  <div className="form-group">
+                    <label htmlFor="completion-notes">Completion Notes</label>
+                  <textarea
+                    id="completion-notes"
+                    rows={4}
+                    placeholder="Summarize what was completed, parts replaced, and any follow-up needed."
+                    value={checkoutDraft.notes}
+                    onChange={(e) => setCheckoutDraft((prev) => ({ ...prev, notes: e.target.value }))}
+                    maxLength={2000}
+                  />
+                </div>
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label htmlFor="signature-name">Customer Signature Name</label>
+                    <input
+                      id="signature-name"
+                      placeholder="Customer full name"
+                      value={checkoutDraft.signatureName}
+                      onChange={(e) => setCheckoutDraft((prev) => ({ ...prev, signatureName: e.target.value }))}
+                      maxLength={120}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="evidence-summary">Evidence Summary</label>
+                    <input
+                      id="evidence-summary"
+                      placeholder="Proof notes (parts replaced, photos, sign-off details)"
+                      value={checkoutDraft.evidenceSummary}
+                      onChange={(e) => setCheckoutDraft((prev) => ({ ...prev, evidenceSummary: e.target.value }))}
+                      maxLength={800}
+                    />
+                  </div>
+                  <div className="form-group full-width">
+                    <label className="checkbox-inline">
+                      <input
+                        type="checkbox"
+                        checked={checkoutDraft.customerAccepted}
+                        onChange={(e) => setCheckoutDraft((prev) => ({ ...prev, customerAccepted: e.target.checked }))}
+                      />
+                      Customer confirmed completion
+                    </label>
+                  </div>
+                </div>
+              </div>
+              <div className="form-actions">
+                <button type="button" className="btn-secondary" onClick={closeCheckoutModal} disabled={Boolean(workingId)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary" disabled={Boolean(workingId)}>
+                  {workingId ? 'Completing...' : 'Complete Job'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1966,7 +3006,7 @@ function InvoicesPage({ token }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>➕ Create Invoice</h2>
-              <button className="modal-close" onClick={() => setShowForm(false)}>×</button>
+              <button type="button" className="modal-close" onClick={() => setShowForm(false)} aria-label="Close dialog">×</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-section">
@@ -2349,6 +3389,7 @@ export default function App() {
               <NavLink to="/inventory" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📦 Inventory</NavLink>
               <NavLink to="/equipment" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>🔧 Equipment</NavLink>
               <NavLink to="/quotes" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📝 Quotes</NavLink>
+              <NavLink to="/recurring" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>🔁 Recurring</NavLink>
               <NavLink to="/export" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📊 Export</NavLink>
             </div>
           )}
@@ -2406,6 +3447,8 @@ export default function App() {
               className="btn-icon notifications-btn" 
               onClick={() => setShowNotifications(!showNotifications)}
               title="Notifications"
+              aria-label="Toggle notifications panel"
+              aria-expanded={showNotifications}
             >
               🔔 {unreadCount > 0 && <span className="notification-badge">{unreadCount}</span>}
             </button>
@@ -2415,6 +3458,8 @@ export default function App() {
             className="btn-icon dark-mode-toggle" 
             onClick={toggleDarkMode}
             title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-pressed={darkMode}
           >
             {darkMode ? '☀️' : '🌙'}
           </button>
@@ -2501,7 +3546,7 @@ export default function App() {
             path="/schedule"
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
-                <SchedulePage token={auth?.token} />
+                <SchedulePage token={auth?.token} user={auth?.user} />
               </ProtectedRoute>
             )}
           />
@@ -2582,6 +3627,14 @@ export default function App() {
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
                 <InventoryPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/recurring"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <RecurringPage token={auth?.token} />
               </ProtectedRoute>
             )}
           />

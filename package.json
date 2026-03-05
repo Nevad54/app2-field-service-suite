@@ -7,9 +7,13 @@
     "build": "npm run build --prefix frontend",
     "install:all": "npm install && npm install --prefix frontend && npm install --prefix backend",
     "test:api": "npm run test:api --prefix backend",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:flaky-report": "node scripts/ci/flaky-trend-report.js",
     "ci:check": "npm run build --prefix frontend && npm run test:api --prefix backend"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "concurrently": "^8.2.2"
   }
 }

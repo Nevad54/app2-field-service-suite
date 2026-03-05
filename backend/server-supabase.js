@@ -12,6 +12,17 @@ const JOB_UPLOADS_DIR = path.join(UPLOADS_DIR, 'jobs');
 const PHOTO_TAGS = new Set(['before', 'after', 'damage', 'parts', 'other']);
 const SUPABASE_STORAGE_BUCKET = String(process.env.SUPABASE_STORAGE_BUCKET || 'job-photos').trim();
 const SIGNED_URL_TTL_SECONDS = Number(process.env.SUPABASE_SIGNED_URL_TTL || 3600);
+const DEFAULT_DISPATCH_SETTINGS = Object.freeze({
+    maxJobsPerTechnicianPerDay: 2,
+    slaDueSoonDays: 1
+});
+const CUSTOMER_COMMUNICATION_TEMPLATES = Object.freeze({
+    eta_update: ({ job, eta }) => `ETA update for ${job.id}: technician arrival is expected at ${eta || 'the scheduled time'}.`,
+    technician_enroute: ({ job, eta }) => `Technician is en route for ${job.id}${eta ? ` and is expected around ${eta}` : ''}.`,
+    work_started: ({ job }) => `Work has started for ${job.id}. We will send another update when the job is completed.`,
+    work_completed: ({ job }) => `Work is completed for ${job.id}. Please review and confirm if anything else is needed.`,
+    delay_notice: ({ job, delayReason, eta }) => `Update for ${job.id}: service is delayed${delayReason ? ` (${delayReason})` : ''}${eta ? `. New ETA: ${eta}` : '.'}`,
+});
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
@@ -72,9 +83,319 @@ let memoryCache = {
     inventory: [],
     equipment: [],
     quotes: [],
+    recurring: [],
+    completionProofs: {},
+    inventoryReservations: [],
+    appSettings: {
+        dispatch: { ...DEFAULT_DISPATCH_SETTINGS }
+    },
     technicians: []
 };
 const sessions = new Map();
+
+const normalizeDispatchSettings = (value = {}) => {
+    const maxJobsPerTechnicianPerDay = Number(value.maxJobsPerTechnicianPerDay);
+    const slaDueSoonDays = Number(value.slaDueSoonDays);
+    return {
+        maxJobsPerTechnicianPerDay: Number.isFinite(maxJobsPerTechnicianPerDay) ? Math.max(1, Math.min(20, Math.floor(maxJobsPerTechnicianPerDay))) : DEFAULT_DISPATCH_SETTINGS.maxJobsPerTechnicianPerDay,
+        slaDueSoonDays: Number.isFinite(slaDueSoonDays) ? Math.max(0, Math.min(14, Math.floor(slaDueSoonDays))) : DEFAULT_DISPATCH_SETTINGS.slaDueSoonDays
+    };
+};
+
+const DISPATCH_OPEN_STATUSES = new Set(['new', 'assigned', 'in-progress']);
+const DISPATCH_ASSIGNABLE_STATUSES = new Set(['new', 'assigned']);
+
+const parseYmd = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const parts = raw.split('-').map((part) => Number(part));
+    if (parts.length !== 3 || parts.some((num) => Number.isNaN(num))) return null;
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+};
+
+const toYmd = (date) => {
+    const d = new Date(date);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+};
+
+const addDaysYmd = (ymd, days) => {
+    const base = parseYmd(ymd);
+    if (!base) return '';
+    base.setDate(base.getDate() + days);
+    return toYmd(base);
+};
+
+const jobPriorityScore = (priority) => {
+    const value = String(priority || '').toLowerCase();
+    if (value === 'high') return 2;
+    if (value === 'medium') return 1;
+    return 0;
+};
+
+const buildDispatchOptimization = ({ jobs, settings, dateFilter, users }) => {
+    const normalizedSettings = normalizeDispatchSettings(settings || {});
+    const capacity = normalizedSettings.maxJobsPerTechnicianPerDay;
+    const relevantJobs = (jobs || []).filter((job) => {
+        const status = String(job?.status || '').toLowerCase();
+        if (!DISPATCH_OPEN_STATUSES.has(status)) return false;
+        const scheduledDate = String(job?.scheduledDate || '').trim();
+        if (!scheduledDate) return false;
+        if (dateFilter && scheduledDate !== dateFilter) return false;
+        return true;
+    });
+
+    const assigneePool = Array.from(new Set([
+        ...(users || []).filter((user) => String(user.role || '').toLowerCase() === 'technician').map((user) => String(user.username || '').trim()),
+        ...relevantJobs.map((job) => String(job.assignedTo || '').trim()).filter(Boolean),
+    ]));
+    if (!assigneePool.includes('technician')) assigneePool.push('technician');
+
+    const loadMap = new Map();
+    const addLoad = (assignee, date, delta) => {
+        if (!assignee || !date) return;
+        const key = `${assignee}::${date}`;
+        const current = loadMap.get(key) || 0;
+        loadMap.set(key, current + delta);
+    };
+    const getLoad = (assignee, date) => loadMap.get(`${assignee}::${date}`) || 0;
+
+    for (const job of relevantJobs) {
+        const assignedTo = String(job.assignedTo || '').trim();
+        const scheduledDate = String(job.scheduledDate || '').trim();
+        if (!assignedTo || !scheduledDate) continue;
+        addLoad(assignedTo, scheduledDate, 1);
+    }
+
+    const suggestions = [];
+    const pushSuggestion = (item) => {
+        suggestions.push({ id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, ...item });
+    };
+
+    for (const job of relevantJobs) {
+        const status = String(job.status || '').toLowerCase();
+        if (!DISPATCH_ASSIGNABLE_STATUSES.has(status)) continue;
+        const scheduledDate = String(job.scheduledDate || '').trim();
+        const assignedTo = String(job.assignedTo || '').trim();
+        if (assignedTo) continue;
+        let bestAssignee = '';
+        let bestLoad = Number.POSITIVE_INFINITY;
+        for (const candidate of assigneePool) {
+            const candidateLoad = getLoad(candidate, scheduledDate);
+            if (candidateLoad < bestLoad) {
+                bestLoad = candidateLoad;
+                bestAssignee = candidate;
+            }
+        }
+        if (!bestAssignee) continue;
+        pushSuggestion({
+            type: 'assign',
+            severity: bestLoad >= capacity ? 'medium' : 'low',
+            jobId: job.id,
+            currentAssignee: '',
+            suggestedAssignee: bestAssignee,
+            suggestedDate: scheduledDate,
+            reason: bestLoad >= capacity
+                ? `No available technician under capacity; ${bestAssignee} has lowest load (${bestLoad}) on ${scheduledDate}.`
+                : `${bestAssignee} has lowest load (${bestLoad}) on ${scheduledDate}.`,
+            impact: {
+                currentLoad: 0,
+                suggestedLoad: bestLoad,
+                capacity,
+            }
+        });
+        addLoad(bestAssignee, scheduledDate, 1);
+    }
+
+    const overloadedKeys = Array.from(loadMap.entries())
+        .filter(([, count]) => count > capacity)
+        .map(([key, count]) => ({ key, count, overflow: count - capacity }));
+
+    for (const overloaded of overloadedKeys) {
+        const [assignee, date] = overloaded.key.split('::');
+        const candidates = relevantJobs
+            .filter((job) => String(job.assignedTo || '').trim() === assignee && String(job.scheduledDate || '').trim() === date)
+            .filter((job) => DISPATCH_ASSIGNABLE_STATUSES.has(String(job.status || '').toLowerCase()))
+            .sort((a, b) => jobPriorityScore(a.priority) - jobPriorityScore(b.priority));
+
+        let remainingOverflow = overloaded.overflow;
+        for (const job of candidates) {
+            if (remainingOverflow <= 0) break;
+            let bestDate = '';
+            let bestDistance = Number.POSITIVE_INFINITY;
+            for (let offset = 1; offset <= 3; offset += 1) {
+                const forward = addDaysYmd(date, offset);
+                const backward = addDaysYmd(date, -offset);
+                const options = [forward, backward];
+                for (const optionDate of options) {
+                    if (!optionDate) continue;
+                    const candidateLoad = getLoad(assignee, optionDate);
+                    if (candidateLoad < capacity && offset < bestDistance) {
+                        bestDate = optionDate;
+                        bestDistance = offset;
+                    }
+                }
+                if (bestDate) break;
+            }
+            if (!bestDate) continue;
+            pushSuggestion({
+                type: 'reschedule',
+                severity: 'high',
+                jobId: job.id,
+                currentAssignee: assignee,
+                suggestedAssignee: assignee,
+                currentDate: date,
+                suggestedDate: bestDate,
+                reason: `Move ${job.id} from ${date} to ${bestDate} to reduce ${assignee} overload.`,
+                impact: {
+                    currentLoad: getLoad(assignee, date),
+                    suggestedLoad: getLoad(assignee, bestDate),
+                    capacity,
+                }
+            });
+            addLoad(assignee, date, -1);
+            addLoad(assignee, bestDate, 1);
+            remainingOverflow -= 1;
+        }
+    }
+
+    suggestions.sort((a, b) => {
+        const sev = { high: 2, medium: 1, low: 0 };
+        return (sev[b.severity] || 0) - (sev[a.severity] || 0);
+    });
+
+    return {
+        generatedAt: new Date().toISOString(),
+        settings: normalizedSettings,
+        dateFilter: dateFilter || '',
+        assigneePool,
+        summary: {
+            totalRelevantJobs: relevantJobs.length,
+            suggestions: suggestions.length,
+            assignmentSuggestions: suggestions.filter((item) => item.type === 'assign').length,
+            rescheduleSuggestions: suggestions.filter((item) => item.type === 'reschedule').length,
+        },
+        suggestions
+    };
+};
+
+const getJobsForUser = (jobs, authUser) => {
+    if (!authUser) return [];
+    if (authUser.role === 'technician') {
+        return (jobs || []).filter((job) => job.assignedTo === authUser.username);
+    }
+    if (authUser.role === 'client') {
+        return (jobs || []).filter((job) => job.customerId === authUser.id);
+    }
+    return jobs || [];
+};
+
+const buildDashboardKpis = ({ jobs, settings, completionProofs, activityLogs, technicians }) => {
+    const normalizedSettings = normalizeDispatchSettings(settings || {});
+    const dueSoonDays = normalizedSettings.slaDueSoonDays;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueSoonCutoff = new Date(today);
+    dueSoonCutoff.setDate(dueSoonCutoff.getDate() + dueSoonDays);
+
+    const openJobs = (jobs || []).filter((job) => DISPATCH_OPEN_STATUSES.has(String(job.status || '').toLowerCase()));
+    const completedJobs = (jobs || []).filter((job) => String(job.status || '').toLowerCase() === 'completed');
+
+    let slaOverdueOpen = 0;
+    let slaDueSoonOpen = 0;
+    for (const job of openJobs) {
+        const scheduledDate = parseYmd(job.scheduledDate);
+        if (!scheduledDate) continue;
+        if (scheduledDate < today) slaOverdueOpen += 1;
+        else if (scheduledDate <= dueSoonCutoff) slaDueSoonOpen += 1;
+    }
+
+    let completedWithSchedule = 0;
+    let completedOnTime = 0;
+    let resolutionHoursTotal = 0;
+    let resolutionHoursCount = 0;
+    let completedWithCheckin = 0;
+    let completedWithProof = 0;
+    for (const job of completedJobs) {
+        const scheduledDate = parseYmd(job.scheduledDate);
+        const checkout = job.checkoutTime ? new Date(job.checkoutTime) : null;
+        if (scheduledDate && checkout && !Number.isNaN(checkout.getTime())) {
+            completedWithSchedule += 1;
+            const checkoutDay = new Date(checkout);
+            checkoutDay.setHours(0, 0, 0, 0);
+            if (checkoutDay <= scheduledDate) completedOnTime += 1;
+        }
+        if (job.checkinTime && job.checkoutTime) {
+            const checkin = new Date(job.checkinTime);
+            const close = new Date(job.checkoutTime);
+            if (!Number.isNaN(checkin.getTime()) && !Number.isNaN(close.getTime()) && close >= checkin) {
+                resolutionHoursTotal += (close.getTime() - checkin.getTime()) / (1000 * 60 * 60);
+                resolutionHoursCount += 1;
+            }
+        }
+        if (job.checkinTime) completedWithCheckin += 1;
+        if (completionProofs && completionProofs[job.id]) completedWithProof += 1;
+    }
+
+    const pct = (num, den) => (den > 0 ? Number(((num / den) * 100).toFixed(1)) : 0);
+    const avgResolutionHours = resolutionHoursCount > 0 ? Number((resolutionHoursTotal / resolutionHoursCount).toFixed(2)) : 0;
+
+    const nowTs = Date.now();
+    const sevenDaysAgoTs = nowTs - (7 * 24 * 60 * 60 * 1000);
+    const quickClose7d = (activityLogs || []).filter((log) => {
+        if (String(log.action || '') !== 'quick_close') return false;
+        const ts = new Date(log.timestamp || 0).getTime();
+        return ts >= sevenDaysAgoTs;
+    }).length;
+    const completed7d = completedJobs.filter((job) => {
+        if (!job.checkoutTime) return false;
+        const ts = new Date(job.checkoutTime).getTime();
+        return ts >= sevenDaysAgoTs;
+    }).length;
+
+    const activeTechnicianCount = (technicians || []).filter((tech) => String(tech.status || 'active').toLowerCase() === 'active').length;
+    const totalOpenAssigned = openJobs.filter((job) => String(job.assignedTo || '').trim()).length;
+    const avgOpenJobsPerActiveTech = activeTechnicianCount > 0 ? Number((totalOpenAssigned / activeTechnicianCount).toFixed(2)) : 0;
+
+    const agingBuckets = { over7Days: 0, over3Days: 0, over1Day: 0 };
+    for (const job of openJobs) {
+        const scheduledDate = parseYmd(job.scheduledDate);
+        if (!scheduledDate) continue;
+        const ageDays = Math.floor((today.getTime() - scheduledDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (ageDays > 7) agingBuckets.over7Days += 1;
+        else if (ageDays > 3) agingBuckets.over3Days += 1;
+        else if (ageDays > 1) agingBuckets.over1Day += 1;
+    }
+
+    return {
+        generatedAt: new Date().toISOString(),
+        scope: {
+            jobsAnalyzed: (jobs || []).length,
+            dueSoonDays,
+        },
+        sla: {
+            overdueOpen: slaOverdueOpen,
+            dueSoonOpen: slaDueSoonOpen,
+            onTimeCompletionRatePct: pct(completedOnTime, completedWithSchedule),
+            completionProofCoveragePct: pct(completedWithProof, completedJobs.length),
+        },
+        operations: {
+            avgResolutionHours,
+            checkinCompliancePct: pct(completedWithCheckin, completedJobs.length),
+            quickClose7d,
+            completed7d,
+            avgOpenJobsPerActiveTech,
+            activeTechnicianCount,
+        },
+        backlog: {
+            openJobs: openJobs.length,
+            unassignedOpen: openJobs.filter((job) => !String(job.assignedTo || '').trim()).length,
+            agingBuckets,
+        },
+    };
+};
 
 const toSafeUser = (user) => ({
     id: user.id,
@@ -118,6 +439,213 @@ const logActivity = async (entityType, entityId, userId, action, description) =>
     memoryCache.activityLogs.unshift(newLog);
     const { supabase } = dbInstance;
     await supabase.from('activity_logs').insert(newLog);
+};
+
+const canAccessJob = (job, authUser) => {
+    if (!job || !authUser) return false;
+    if (['admin', 'dispatcher'].includes(authUser.role)) return true;
+    if (authUser.role === 'technician' && job.assignedTo === authUser.username) return true;
+    if (authUser.role === 'client' && job.customerId === authUser.id) return true;
+    return false;
+};
+
+const canSendCustomerUpdate = (job, authUser) => {
+    if (!job || !authUser) return false;
+    if (['admin', 'dispatcher'].includes(authUser.role)) return true;
+    return authUser.role === 'technician' && job.assignedTo === authUser.username;
+};
+
+const resolveCustomerNotificationUser = (job) => {
+    const customerId = String(job?.customerId || '').trim();
+    if (!customerId) return 'all';
+    const customer = memoryCache.customers.find((item) => item.id === customerId);
+    if (!customer || !customer.name) return 'all';
+    return customer.name;
+};
+
+const mapCompletionProofs = (items) => {
+    const next = {};
+    for (const item of items || []) {
+        if (!item || !item.jobId) continue;
+        next[item.jobId] = item;
+    }
+    return next;
+};
+
+const withCompletionProof = (job) => {
+    if (!job) return job;
+    return {
+        ...job,
+        completionProof: memoryCache.completionProofs[job.id] || null
+    };
+};
+
+const withCompletionProofList = (jobs) => (jobs || []).map((job) => withCompletionProof(job));
+
+const normalizeInventoryToken = (value) => String(value || '').trim().toLowerCase();
+
+const parseUsageToken = (raw) => {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+    const qtyMatch = value.match(/(.+?)\s*[xX]\s*(\d+(?:\.\d+)?)$/);
+    if (qtyMatch) {
+        const name = qtyMatch[1].trim();
+        const quantity = Number(qtyMatch[2]);
+        return { name, quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1 };
+    }
+    const colonMatch = value.match(/(.+?)\s*:\s*(\d+(?:\.\d+)?)$/);
+    if (colonMatch) {
+        const name = colonMatch[1].trim();
+        const quantity = Number(colonMatch[2]);
+        return { name, quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 1 };
+    }
+    return { name: value, quantity: 1 };
+};
+
+const findInventoryItem = (tokenName) => {
+    const probe = normalizeInventoryToken(tokenName);
+    if (!probe) return null;
+    return memoryCache.inventory.find((item) => {
+        const id = normalizeInventoryToken(item.id);
+        const sku = normalizeInventoryToken(item.sku);
+        const name = normalizeInventoryToken(item.name);
+        return probe === id || probe === sku || probe === name;
+    }) || null;
+};
+
+const getReservedQuantityForItem = (inventoryId) => memoryCache.inventoryReservations
+    .filter((reservation) => reservation.inventoryId === inventoryId && reservation.status === 'reserved')
+    .reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+const buildInventoryHints = (jobId, usageItems) => {
+    const hints = [];
+    for (const usage of usageItems || []) {
+        const item = findInventoryItem(usage.name);
+        if (!item) {
+            hints.push({
+                token: usage.name,
+                quantity: usage.quantity,
+                matched: false,
+                reason: 'No matching inventory item',
+            });
+            continue;
+        }
+        const reservedForJob = memoryCache.inventoryReservations
+            .filter((reservation) => reservation.jobId === jobId && reservation.inventoryId === item.id && reservation.status === 'reserved')
+            .reduce((sum, reservation) => sum + Number(reservation.quantity || 0), 0);
+        const totalReserved = getReservedQuantityForItem(item.id);
+        const availableUnreserved = Number(item.quantity || 0) - totalReserved;
+        hints.push({
+            token: usage.name,
+            quantity: usage.quantity,
+            matched: true,
+            inventoryId: item.id,
+            inventoryName: item.name,
+            reservedForJob,
+            availableUnreserved: Number(availableUnreserved.toFixed(2)),
+            recommendation: reservedForJob >= usage.quantity
+                ? 'Reservation coverage is sufficient'
+                : `Reserve additional ${Number((usage.quantity - reservedForJob).toFixed(2))} for this job`,
+        });
+    }
+    return hints;
+};
+
+const reserveInventoryForJob = async ({ jobId, inventoryId, quantity, reservedBy }) => {
+    const item = memoryCache.inventory.find((entry) => entry.id === inventoryId);
+    if (!item) return { error: 'Inventory item not found' };
+    const qty = Number(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) return { error: 'Quantity must be greater than zero' };
+    const reserved = getReservedQuantityForItem(inventoryId);
+    const available = Number(item.quantity || 0) - reserved;
+    if (qty > available) {
+        return { error: `Only ${Number(available.toFixed(2))} units are available to reserve` };
+    }
+    const reservation = {
+        id: `res-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        jobId,
+        inventoryId,
+        inventoryName: item.name,
+        quantity: Number(qty.toFixed(2)),
+        status: 'reserved',
+        reservedBy,
+        reservedAt: new Date().toISOString(),
+        consumedBy: '',
+        consumedAt: '',
+        consumedQuantity: 0,
+    };
+    memoryCache.inventoryReservations.unshift(reservation);
+    await dbInstance.persistInventoryReservation(reservation);
+    return { reservation };
+};
+
+const consumeReservationsForJob = async ({ jobId, actor }) => {
+    const activeReservations = memoryCache.inventoryReservations.filter((reservation) => reservation.jobId === jobId && reservation.status === 'reserved');
+    const result = [];
+    for (const reservation of activeReservations) {
+        const itemIndex = memoryCache.inventory.findIndex((entry) => entry.id === reservation.inventoryId);
+        if (itemIndex === -1) continue;
+        const item = { ...memoryCache.inventory[itemIndex] };
+        const currentQty = Number(item.quantity || 0);
+        const requested = Number(reservation.quantity || 0);
+        const consumed = Math.max(0, Math.min(currentQty, requested));
+        const shortage = Math.max(0, requested - consumed);
+        item.quantity = Number((currentQty - consumed).toFixed(2));
+        memoryCache.inventory[itemIndex] = item;
+        await dbInstance.persistInventory(item);
+
+        const updatedReservation = {
+            ...reservation,
+            status: 'consumed',
+            consumedBy: actor,
+            consumedAt: new Date().toISOString(),
+            consumedQuantity: Number(consumed.toFixed(2)),
+        };
+        const resIndex = memoryCache.inventoryReservations.findIndex((entry) => entry.id === reservation.id);
+        if (resIndex >= 0) memoryCache.inventoryReservations[resIndex] = updatedReservation;
+        await dbInstance.persistInventoryReservation(updatedReservation);
+        result.push({
+            reservationId: reservation.id,
+            inventoryId: reservation.inventoryId,
+            inventoryName: reservation.inventoryName,
+            requested: Number(requested.toFixed(2)),
+            consumed: Number(consumed.toFixed(2)),
+            shortage: Number(shortage.toFixed(2)),
+        });
+    }
+    return result;
+};
+
+const saveCompletionProof = async (jobId, payload, authUser) => {
+    const signatureName = String(payload.signatureName || '').trim().slice(0, 120);
+    const signatureData = String(payload.signatureData || '').trim();
+    const evidenceSummary = String(payload.evidenceSummary || '').trim().slice(0, 800);
+    const customerAccepted = payload.customerAccepted === true;
+    const evidencePhotoIds = Array.isArray(payload.evidencePhotoIds)
+        ? payload.evidencePhotoIds.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 20)
+        : [];
+
+    if (!signatureName && !signatureData && !evidenceSummary && !customerAccepted && evidencePhotoIds.length === 0) {
+        return null;
+    }
+
+    const existing = memoryCache.completionProofs[jobId] || {};
+    const proof = {
+        id: existing.id || `proof-${Date.now()}`,
+        jobId,
+        signatureName: signatureName || existing.signatureName || '',
+        signatureData: signatureData || existing.signatureData || '',
+        evidenceSummary: evidenceSummary || existing.evidenceSummary || '',
+        customerAccepted: customerAccepted || existing.customerAccepted === true,
+        evidencePhotoIds: evidencePhotoIds.length > 0 ? evidencePhotoIds : (existing.evidencePhotoIds || []),
+        submittedBy: authUser.username,
+        submittedAt: new Date().toISOString(),
+    };
+
+    memoryCache.completionProofs[jobId] = proof;
+    await dbInstance.persistCompletionProof(proof);
+    await logActivity('completion_proof', jobId, authUser.username, 'submitted', `Completion proof submitted for ${jobId}`);
+    return proof;
 };
 
 const startServer = async () => {
@@ -236,6 +764,7 @@ const startServer = async () => {
     memoryCache.inventory = bootstrapped.inventory?.length > 0 ? bootstrapped.inventory : defaultInventory;
     memoryCache.equipment = bootstrapped.equipment?.length > 0 ? bootstrapped.equipment : defaultEquipment;
     memoryCache.quotes = bootstrapped.quotes?.length > 0 ? bootstrapped.quotes : defaultQuotes;
+    memoryCache.recurring = bootstrapped.recurring || [];
     memoryCache.customers = bootstrapped.customers || [];
     memoryCache.jobs = bootstrapped.jobs || [];
     memoryCache.invoices = bootstrapped.invoices || [];
@@ -243,6 +772,11 @@ const startServer = async () => {
     memoryCache.tasks = bootstrapped.tasks || [];
     memoryCache.activityLogs = bootstrapped.activityLogs || [];
     memoryCache.notifications = bootstrapped.notifications || [];
+    memoryCache.completionProofs = mapCompletionProofs(bootstrapped.completionProofs || []);
+    memoryCache.inventoryReservations = bootstrapped.inventoryReservations || [];
+
+    const persistedAppSettings = await dbInstance.loadAppSettings();
+    memoryCache.appSettings.dispatch = normalizeDispatchSettings(persistedAppSettings.dispatch || {});
 
     // Load sessions from DB
     const dbSessions = await dbInstance.loadSessions();
@@ -376,15 +910,15 @@ const startServer = async () => {
     app.get('/api/jobs', requireAuth, async (req, res) => {
         if (req.authUser.role === 'technician') {
             const jobs = memoryCache.jobs.filter((job) => job.assignedTo === req.authUser.username);
-            const signedJobs = await withSignedJobsPhotos(jobs);
+            const signedJobs = await withSignedJobsPhotos(withCompletionProofList(jobs));
             return res.json(signedJobs);
         }
         if (req.authUser.role === 'client') {
             const jobs = memoryCache.jobs.filter((job) => job.customerId === req.authUser.id);
-            const signedJobs = await withSignedJobsPhotos(jobs);
+            const signedJobs = await withSignedJobsPhotos(withCompletionProofList(jobs));
             return res.json(signedJobs);
         }
-        const signedJobs = await withSignedJobsPhotos(memoryCache.jobs);
+        const signedJobs = await withSignedJobsPhotos(withCompletionProofList(memoryCache.jobs));
         return res.json(signedJobs);
     });
 
@@ -473,6 +1007,273 @@ const startServer = async () => {
         await dbInstance.persistJob(existing);
         await logActivity('job', existing.id, req.authUser.username, 'status_changed', `Job ${existing.id} status changed to ${status}`);
         return res.json(existing);
+    });
+
+    app.post('/api/jobs/:id/checkin', requireAuth, async (req, res) => {
+        const index = memoryCache.jobs.findIndex(j => j.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const existing = { ...memoryCache.jobs[index] };
+
+        if (req.authUser.role === 'technician') {
+            if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+        } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        if (existing.checkoutTime) return res.status(400).json({ error: 'Job already checked out' });
+        if (existing.checkinTime) return res.status(400).json({ error: 'Job already checked in' });
+
+        existing.checkinTime = new Date().toISOString();
+        if (existing.status === 'new' || existing.status === 'assigned') {
+            existing.status = 'in-progress';
+        }
+        existing.updated_at = new Date().toISOString();
+
+        memoryCache.jobs[index] = existing;
+        await dbInstance.persistJob(existing);
+        await logActivity('job', existing.id, req.authUser.username, 'checkin', `Checked in to ${existing.id}`);
+        return res.json(existing);
+    });
+
+    app.post('/api/jobs/:id/checkout', requireAuth, async (req, res) => {
+        const index = memoryCache.jobs.findIndex(j => j.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const existing = { ...memoryCache.jobs[index] };
+
+        if (req.authUser.role === 'technician') {
+            if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+        } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        if (!existing.checkinTime) return res.status(400).json({ error: 'Check in first before checkout' });
+        if (existing.checkoutTime) return res.status(400).json({ error: 'Job already checked out' });
+
+        existing.checkoutTime = new Date().toISOString();
+        existing.status = 'completed';
+        existing.completionNotes = typeof req.body.notes === 'string' ? req.body.notes : '';
+        existing.updated_at = new Date().toISOString();
+
+        memoryCache.jobs[index] = existing;
+        await dbInstance.persistJob(existing);
+        const consumedReservations = await consumeReservationsForJob({ jobId: existing.id, actor: req.authUser.username });
+        if (req.body && req.body.completionProof && typeof req.body.completionProof === 'object') {
+            await saveCompletionProof(existing.id, req.body.completionProof, req.authUser);
+        }
+        await logActivity('job', existing.id, req.authUser.username, 'checkout', `Checked out from ${existing.id}`);
+        return res.json({ ...withCompletionProof(existing), consumedReservations });
+    });
+
+    app.post('/api/jobs/:id/quick-close', requireAuth, async (req, res) => {
+        const index = memoryCache.jobs.findIndex(j => j.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const existing = { ...memoryCache.jobs[index] };
+
+        if (req.authUser.role === 'technician') {
+            if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
+        } else if (!['admin', 'dispatcher'].includes(req.authUser.role)) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+
+        if (existing.checkoutTime) return res.status(400).json({ error: 'Job already checked out' });
+
+        const nowIso = new Date().toISOString();
+        if (!existing.checkinTime) existing.checkinTime = nowIso;
+        existing.checkoutTime = nowIso;
+        existing.status = 'completed';
+        const notes = String(req.body?.notes || '').trim();
+        existing.completionNotes = notes || `Quick close by ${req.authUser.username}`;
+        existing.updated_at = nowIso;
+
+        memoryCache.jobs[index] = existing;
+        await dbInstance.persistJob(existing);
+        const consumedReservations = await consumeReservationsForJob({ jobId: existing.id, actor: req.authUser.username });
+        if (req.body && req.body.completionProof && typeof req.body.completionProof === 'object') {
+            await saveCompletionProof(existing.id, req.body.completionProof, req.authUser);
+        }
+        await logActivity('job', existing.id, req.authUser.username, 'quick_close', `Quick closed ${existing.id}`);
+        return res.json({ ...withCompletionProof(existing), consumedReservations });
+    });
+
+    app.patch('/api/jobs/:id/worklog', requireAuth, async (req, res) => {
+        const index = memoryCache.jobs.findIndex(j => j.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const existing = { ...memoryCache.jobs[index] };
+
+        const isTechAssigned = req.authUser.role === 'technician' && existing.assignedTo === req.authUser.username;
+        const isManager = ['admin', 'dispatcher'].includes(req.authUser.role);
+        if (!isTechAssigned && !isManager) return res.status(403).json({ error: 'Forbidden' });
+
+        const asList = (value) => (Array.isArray(value) ? value : []);
+        const { technicianNotes, partsUsed, materialsUsed } = req.body || {};
+        const worklogEntry = {
+            at: new Date().toISOString(),
+            by: req.authUser.username,
+            technicianNotes: technicianNotes || '',
+            partsUsed: asList(partsUsed),
+            materialsUsed: asList(materialsUsed)
+        };
+
+        existing.technicianNotes = technicianNotes !== undefined ? String(technicianNotes || '') : (existing.technicianNotes || '');
+        existing.partsUsed = partsUsed !== undefined ? asList(partsUsed) : asList(existing.partsUsed);
+        existing.materialsUsed = materialsUsed !== undefined ? asList(materialsUsed) : asList(existing.materialsUsed);
+        existing.worklog = [worklogEntry, ...(Array.isArray(existing.worklog) ? existing.worklog : [])];
+        existing.updated_at = new Date().toISOString();
+
+        memoryCache.jobs[index] = existing;
+        await dbInstance.persistJob(existing);
+        await logActivity('job', existing.id, req.authUser.username, 'worklog_updated', `Updated worklog for ${existing.id}`);
+        const usageItems = [...asList(partsUsed), ...asList(materialsUsed)]
+            .map((entry) => parseUsageToken(entry))
+            .filter(Boolean);
+        const inventoryHints = buildInventoryHints(existing.id, usageItems);
+        return res.json({ ...existing, inventoryHints });
+    });
+
+    app.get('/api/jobs/:id/completion-proof', requireAuth, (req, res) => {
+        const job = memoryCache.jobs.find((item) => item.id === req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+        if (!canAccessJob(job, req.authUser)) return res.status(403).json({ error: 'Forbidden' });
+        res.json(memoryCache.completionProofs[job.id] || null);
+    });
+
+    app.post('/api/jobs/:id/completion-proof', requireAuth, async (req, res) => {
+        const index = memoryCache.jobs.findIndex((item) => item.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const job = memoryCache.jobs[index];
+        if (!canSendCustomerUpdate(job, req.authUser)) return res.status(403).json({ error: 'Forbidden' });
+        const proof = await saveCompletionProof(job.id, req.body || {}, req.authUser);
+        if (!proof) return res.status(400).json({ error: 'Completion proof payload is empty' });
+        res.status(201).json(proof);
+    });
+
+    app.get('/api/jobs/:id/customer-updates', requireAuth, (req, res) => {
+        const job = memoryCache.jobs.find((item) => item.id === req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+        if (!canAccessJob(job, req.authUser)) return res.status(403).json({ error: 'Forbidden' });
+
+        const marker = `[${job.id}]`;
+        const updates = memoryCache.notifications
+            .filter((item) => item.type === 'customer_update' && String(item.title || '').includes(marker))
+            .map((item) => ({
+                id: item.id,
+                jobId: job.id,
+                title: item.title,
+                message: item.message,
+                channel: item.channel || 'portal',
+                templateKey: item.templateKey || '',
+                eta: item.eta || '',
+                createdAt: item.created_at || new Date().toISOString(),
+                sentBy: item.sentBy || '',
+                targetUser: item.user_id || 'all',
+            }))
+            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        res.json(updates);
+    });
+
+    app.get('/api/jobs/:id/inventory/intelligence', requireAuth, (req, res) => {
+        const job = memoryCache.jobs.find((item) => item.id === req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+        if (!canAccessJob(job, req.authUser)) return res.status(403).json({ error: 'Forbidden' });
+        const reservations = memoryCache.inventoryReservations
+            .filter((item) => item.jobId === job.id)
+            .sort((a, b) => new Date(b.reservedAt || b.consumedAt || 0).getTime() - new Date(a.reservedAt || a.consumedAt || 0).getTime());
+        const openReservations = reservations.filter((item) => item.status === 'reserved');
+        const reservedQty = openReservations.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+        const consumedQty = reservations.filter((item) => item.status === 'consumed').reduce((sum, item) => sum + Number(item.consumedQuantity || 0), 0);
+        res.json({
+            jobId: job.id,
+            reservations,
+            summary: {
+                openReservations: openReservations.length,
+                reservedQty: Number(reservedQty.toFixed(2)),
+                consumedQty: Number(consumedQty.toFixed(2)),
+            },
+        });
+    });
+
+    app.post('/api/jobs/:id/inventory/reserve', requireAuth, async (req, res) => {
+        const job = memoryCache.jobs.find((item) => item.id === req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job not found' });
+        if (!canSendCustomerUpdate(job, req.authUser)) return res.status(403).json({ error: 'Forbidden' });
+        const inventoryId = String(req.body?.inventoryId || '').trim();
+        const quantity = req.body?.quantity;
+        if (!inventoryId) return res.status(400).json({ error: 'inventoryId is required' });
+        const { reservation, error } = await reserveInventoryForJob({
+            jobId: job.id,
+            inventoryId,
+            quantity,
+            reservedBy: req.authUser.username,
+        });
+        if (error) return res.status(400).json({ error });
+        await logActivity('inventory_reservation', reservation.id, req.authUser.username, 'reserved', `Reserved ${reservation.quantity} ${reservation.inventoryName} for ${job.id}`);
+        return res.status(201).json(reservation);
+    });
+
+    app.post('/api/jobs/:id/customer-update', requireAuth, async (req, res) => {
+        const index = memoryCache.jobs.findIndex((item) => item.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const job = memoryCache.jobs[index];
+        if (!canSendCustomerUpdate(job, req.authUser)) return res.status(403).json({ error: 'Forbidden' });
+
+        const templateKey = String(req.body.templateKey || '').trim().toLowerCase();
+        const channel = String(req.body.channel || '').trim().toLowerCase();
+        const customMessage = String(req.body.customMessage || '').trim();
+        const eta = String(req.body.eta || '').trim();
+        const delayReason = String(req.body.delayReason || '').trim();
+        const channels = new Set(['portal', 'email', 'sms']);
+        if (!channels.has(channel)) return res.status(400).json({ error: 'Invalid channel' });
+        if (!CUSTOMER_COMMUNICATION_TEMPLATES[templateKey]) return res.status(400).json({ error: 'Invalid templateKey' });
+
+        const renderedMessage = CUSTOMER_COMMUNICATION_TEMPLATES[templateKey]({ job, eta, delayReason });
+        const message = (customMessage || renderedMessage).slice(0, 400);
+        const customerUser = resolveCustomerNotificationUser(job);
+        const title = `[${job.id}] Customer Update (${templateKey.replace(/_/g, ' ')})`;
+        const notification = {
+            id: `notif-${Date.now()}`,
+            user_id: customerUser,
+            type: 'customer_update',
+            title,
+            message,
+            read: false,
+            channel,
+            templateKey,
+            eta,
+            sentBy: req.authUser.username,
+            created_at: new Date().toISOString(),
+        };
+
+        memoryCache.notifications.unshift(notification);
+        const { error } = await dbInstance.supabase.from('notifications').upsert({
+            id: notification.id,
+            user_id: notification.user_id,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            read: notification.read,
+            created_at: notification.created_at,
+        });
+        if (error) return res.status(500).json({ error: error.message });
+
+        await logActivity(
+            'customer_communication',
+            job.id,
+            req.authUser.username,
+            'sent',
+            `Sent ${channel} customer update (${templateKey}) for ${job.id}`
+        );
+
+        return res.status(201).json({
+            id: notification.id,
+            jobId: job.id,
+            channel,
+            templateKey,
+            eta,
+            message,
+            sentBy: req.authUser.username,
+            targetUser: customerUser,
+            createdAt: notification.created_at,
+        });
     });
 
     app.delete('/api/jobs/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
@@ -945,6 +1746,18 @@ const startServer = async () => {
         });
     });
 
+    app.get('/api/dashboard/kpis', requireAuth, (req, res) => {
+        const scopedJobs = getJobsForUser(memoryCache.jobs, req.authUser);
+        const payload = buildDashboardKpis({
+            jobs: scopedJobs,
+            settings: memoryCache.appSettings.dispatch,
+            completionProofs: memoryCache.completionProofs,
+            activityLogs: memoryCache.activityLogs,
+            technicians: memoryCache.technicians,
+        });
+        res.json(payload);
+    });
+
     // ============== TECHNICIANS ENDPOINTS ==============
     app.get('/api/technicians', requireAuth, (req, res) => {
         res.json(memoryCache.technicians);
@@ -1036,9 +1849,62 @@ const startServer = async () => {
 
     // ============== SCHEDULE ENDPOINT ==============
     app.get('/api/schedule', requireAuth, async (req, res) => {
-        const scheduledJobs = memoryCache.jobs.filter(job => job.scheduledDate);
+        const scheduledJobs = withCompletionProofList(memoryCache.jobs.filter(job => job.scheduledDate));
         const signedJobs = await withSignedJobsPhotos(scheduledJobs);
         res.json(signedJobs);
+    });
+
+    // ============== APP SETTINGS ENDPOINTS ==============
+    app.get('/api/settings/dispatch', requireAuth, (_req, res) => {
+        res.json(memoryCache.appSettings.dispatch || { ...DEFAULT_DISPATCH_SETTINGS });
+    });
+
+    app.put('/api/settings/dispatch', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const next = normalizeDispatchSettings(req.body || {});
+        memoryCache.appSettings.dispatch = next;
+        await dbInstance.persistAppSetting('dispatch', next);
+        await logActivity('settings', 'dispatch', req.authUser.username, 'updated', 'Updated dispatch settings');
+        res.json(next);
+    });
+
+    app.get('/api/dispatch/optimize', requireAuth, requireRoles(['admin', 'dispatcher']), (req, res) => {
+        const dateFilter = String(req.query.date || '').trim();
+        const optimization = buildDispatchOptimization({
+            jobs: memoryCache.jobs,
+            settings: memoryCache.appSettings.dispatch,
+            dateFilter,
+            users: memoryCache.users,
+        });
+        res.json(optimization);
+    });
+
+    app.post('/api/dispatch/optimize/apply', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const jobId = String(req.body?.jobId || '').trim();
+        const type = String(req.body?.type || '').trim().toLowerCase();
+        const suggestedAssignee = String(req.body?.suggestedAssignee || '').trim();
+        const suggestedDate = String(req.body?.suggestedDate || '').trim();
+        if (!jobId || !type) return res.status(400).json({ error: 'jobId and type are required' });
+
+        const index = memoryCache.jobs.findIndex((job) => job.id === jobId);
+        if (index === -1) return res.status(404).json({ error: 'Job not found' });
+        const existing = { ...memoryCache.jobs[index] };
+
+        if (type === 'assign') {
+            if (!suggestedAssignee) return res.status(400).json({ error: 'suggestedAssignee is required for assign' });
+            existing.assignedTo = suggestedAssignee;
+            if (existing.status === 'new') existing.status = 'assigned';
+        } else if (type === 'reschedule') {
+            if (!suggestedDate) return res.status(400).json({ error: 'suggestedDate is required for reschedule' });
+            existing.scheduledDate = suggestedDate;
+        } else {
+            return res.status(400).json({ error: 'Unsupported optimization type' });
+        }
+
+        existing.updated_at = new Date().toISOString();
+        memoryCache.jobs[index] = existing;
+        await dbInstance.persistJob(existing);
+        await logActivity('dispatch_optimization', existing.id, req.authUser.username, 'applied', `Applied ${type} optimization to ${existing.id}`);
+        res.json(existing);
     });
 
     // ============== INVENTORY ENDPOINTS ==============
@@ -1262,6 +2128,90 @@ const startServer = async () => {
         
         await logActivity('job', job.id, req.authUser.username, 'created', `Created job from quote: ${quote.title}`);
         res.status(201).json(job);
+    });
+
+    // ============== RECURRING MAINTENANCE ENDPOINTS ==============
+    app.get('/api/recurring', requireAuth, (_req, res) => {
+        res.json(memoryCache.recurring);
+    });
+
+    app.get('/api/recurring/customer/:customerId', requireAuth, (req, res) => {
+        const customerRecurring = memoryCache.recurring.filter((item) => item.customerId === req.params.customerId);
+        res.json(customerRecurring);
+    });
+
+    app.get('/api/recurring/:id', requireAuth, (req, res) => {
+        const recurring = memoryCache.recurring.find((item) => item.id === req.params.id);
+        if (!recurring) return res.status(404).json({ error: 'Recurring job not found' });
+        return res.json(recurring);
+    });
+
+    app.post('/api/recurring', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const { customerId, title, description, frequency, interval_value, interval_unit, start_date, end_date, assignedTo, category, priority, estimated_duration_hours } = req.body || {};
+        if (!customerId || !title || !frequency) {
+            return res.status(400).json({ error: 'Customer ID, title, and frequency are required' });
+        }
+
+        const newRecurring = {
+            id: `REC-${Date.now()}`,
+            customerId,
+            title,
+            description: description || '',
+            frequency,
+            interval_value: Number(interval_value || 1),
+            interval_unit: interval_unit || 'months',
+            start_date: start_date || null,
+            end_date: end_date || null,
+            status: 'active',
+            assignedTo: assignedTo || '',
+            category: category || 'maintenance',
+            priority: priority || 'medium',
+            estimated_duration_hours: Number(estimated_duration_hours || 1),
+            created_by: req.authUser.username,
+            created_at: new Date().toISOString()
+        };
+
+        memoryCache.recurring.unshift(newRecurring);
+        await dbInstance.persistRecurring(newRecurring);
+        await logActivity('recurring', newRecurring.id, req.authUser.username, 'created', `Created recurring job: ${title}`);
+        return res.status(201).json(newRecurring);
+    });
+
+    app.put('/api/recurring/:id', requireAuth, requireRoles(['admin', 'dispatcher']), async (req, res) => {
+        const index = memoryCache.recurring.findIndex((item) => item.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Recurring job not found' });
+
+        const existing = { ...memoryCache.recurring[index] };
+        const { title, description, frequency, interval_value, interval_unit, start_date, end_date, status, assignedTo, category, priority, estimated_duration_hours } = req.body || {};
+
+        if (title !== undefined) existing.title = title;
+        if (description !== undefined) existing.description = description;
+        if (frequency !== undefined) existing.frequency = frequency;
+        if (interval_value !== undefined) existing.interval_value = Number(interval_value || 1);
+        if (interval_unit !== undefined) existing.interval_unit = interval_unit;
+        if (start_date !== undefined) existing.start_date = start_date;
+        if (end_date !== undefined) existing.end_date = end_date;
+        if (status !== undefined) existing.status = status;
+        if (assignedTo !== undefined) existing.assignedTo = assignedTo;
+        if (category !== undefined) existing.category = category;
+        if (priority !== undefined) existing.priority = priority;
+        if (estimated_duration_hours !== undefined) existing.estimated_duration_hours = Number(estimated_duration_hours || 1);
+
+        memoryCache.recurring[index] = existing;
+        await dbInstance.persistRecurring(existing);
+        await logActivity('recurring', existing.id, req.authUser.username, 'updated', `Updated recurring job: ${existing.title}`);
+        return res.json(existing);
+    });
+
+    app.delete('/api/recurring/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+        const index = memoryCache.recurring.findIndex((item) => item.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'Recurring job not found' });
+
+        const recurring = memoryCache.recurring[index];
+        memoryCache.recurring.splice(index, 1);
+        await dbInstance.deleteRecurring(recurring.id);
+        await logActivity('recurring', recurring.id, req.authUser.username, 'deleted', `Deleted recurring job: ${recurring.title}`);
+        return res.json({ ok: true });
     });
 
     // ============== INVOICES ENDPOINTS ==============

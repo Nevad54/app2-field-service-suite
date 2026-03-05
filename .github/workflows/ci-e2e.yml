@@ -1,0 +1,75 @@
+name: CI E2E
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    concurrency:
+      group: ci-e2e-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium
+
+      - name: Run backend API regression
+        run: npm run test:api
+
+      - name: Run frontend E2E suite
+        run: npm run test:e2e
+
+      - name: Build flaky trend report
+        if: always()
+        run: npm run test:e2e:flaky-report
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 14
+
+      - name: Upload Playwright raw test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results
+          path: test-results
+          retention-days: 14
+
+      - name: Upload flaky trend report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flaky-trend-report
+          path: |
+            test-results/flaky-trend.json
+            test-results/flaky-trend.md
+          retention-days: 30

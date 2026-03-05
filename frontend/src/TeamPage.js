@@ -1,25 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-
-const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/+$/, '');
-const apiUrl = (path) => `${API_BASE_URL}${path}`;
-
-async function apiFetch(path, { token, method = 'GET', body } = {}) {
-  const response = await fetch(apiUrl(path), {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error((data && data.error) || 'Request failed');
-  }
-  return data;
-}
+import { apiFetch } from './api';
 
 // ============== TEAM PAGE COMPONENT ==============
 export default function TeamPage({ token }) {
@@ -249,7 +229,7 @@ export default function TeamPage({ token }) {
           <div className="modal-content modal-lg" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editingId ? 'Edit Technician' : 'New Technician'}</h2>
-              <button className="modal-close" onClick={cancelForm}>×</button>
+              <button type="button" className="modal-close" onClick={cancelForm} aria-label="Close dialog">×</button>
             </div>
             <form className="form-section" onSubmit={handleSubmit}>
               <div className="form-grid">
@@ -355,6 +335,7 @@ export default function TeamPage({ token }) {
             placeholder="Search technicians by name, email, phone, or skills..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            aria-label="Search technicians"
           />
         </div>
       )}

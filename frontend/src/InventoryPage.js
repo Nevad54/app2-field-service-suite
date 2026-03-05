@@ -1,26 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-
-const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/+$/, '');
-const apiUrl = (path) => `${API_BASE_URL}${path}`;
-
-async function apiFetch(path, { token, method = 'GET', body } = {}) {
-  const response = await fetch(apiUrl(path), {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error((data && data.error) || 'Request failed');
-  }
-  return data;
-}
+import { apiFetch } from './api';
 
 export default function InventoryPage({ token }) {
   const [items, setItems] = useState([]);
@@ -144,7 +123,7 @@ export default function InventoryPage({ token }) {
 
       {error ? <div className="form-error-box">{error}</div> : null}
 
-      <div className="stats-grid" style={{ marginBottom: '20px' }}>
+      <div className="stats-grid stats-section">
         <div className="stat-card">
           <span className="stat-icon">📦</span>
           <div className="stat-info">
@@ -152,7 +131,7 @@ export default function InventoryPage({ token }) {
             <span className="stat-label">Total Items</span>
           </div>
         </div>
-        <div className="stat-card" style={{ background: lowStockCount > 0 ? 'var(--warning-light)' : 'var(--bg-secondary)' }}>
+        <div className={`stat-card ${lowStockCount > 0 ? 'pending' : ''}`}>
           <span className="stat-icon">⚠️</span>
           <div className="stat-info">
             <span className="stat-value">{lowStockCount}</span>
@@ -176,6 +155,7 @@ export default function InventoryPage({ token }) {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
+            aria-label="Search inventory"
           />
           <select 
             value={filterCategory}
@@ -195,7 +175,7 @@ export default function InventoryPage({ token }) {
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editingId ? '✏️ Edit Part' : '➕ Add New Part'}</h2>
-              <button className="modal-close" onClick={cancelForm}>×</button>
+              <button type="button" className="modal-close" onClick={cancelForm} aria-label="Close dialog">×</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-section">

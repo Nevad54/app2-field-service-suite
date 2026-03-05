@@ -25,3 +25,7 @@ frontend/src/utils/
 
 # Worktree
 worktree-1772601611032/
+
+# Playwright artifacts
+playwright-report/
+test-results/

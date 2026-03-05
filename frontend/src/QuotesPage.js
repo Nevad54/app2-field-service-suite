@@ -1,25 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-
-const API_BASE_URL = (process.env.REACT_APP_API_BASE_URL || '').replace(/\/+$/, '');
-const apiUrl = (path) => `${API_BASE_URL}${path}`;
-
-async function apiFetch(path, { token, method = 'GET', body } = {}) {
-  const response = await fetch(apiUrl(path), {
-    method,
-    headers: {
-      Accept: 'application/json',
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error((data && data.error) || 'Request failed');
-  }
-  return data;
-}
+import { apiFetch } from './api';
 
 export default function QuotesPage({ token }) {
   const [quotes, setQuotes] = useState([]);
@@ -31,6 +11,7 @@ export default function QuotesPage({ token }) {
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [convertDraft, setConvertDraft] = useState({ quote: null, scheduledDate: '' });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -152,18 +133,30 @@ export default function QuotesPage({ token }) {
     }
   };
 
-  const handleConvertToJob = async (quote) => {
-    const scheduledDate = prompt('Enter scheduled date (YYYY-MM-DD):', new Date().toISOString().split('T')[0]);
-    if (!scheduledDate) return;
-    
+  const openConvertModal = (quote) => {
+    setConvertDraft({
+      quote,
+      scheduledDate: new Date().toISOString().split('T')[0],
+    });
+  };
+
+  const closeConvertModal = () => {
+    setConvertDraft({ quote: null, scheduledDate: '' });
+  };
+
+  const handleConvertToJob = async () => {
+    if (!convertDraft.quote || !convertDraft.scheduledDate) return;
+
     setError('');
+    setSuccess('');
     try {
-      await apiFetch(`/api/quotes/${encodeURIComponent(quote.id)}/convert`, { 
+      await apiFetch(`/api/quotes/${encodeURIComponent(convertDraft.quote.id)}/convert`, {
         token, 
         method: 'POST', 
-        body: { scheduledDate } 
+        body: { scheduledDate: convertDraft.scheduledDate } 
       });
       setSuccess('Quote converted to job successfully!');
+      closeConvertModal();
       await fetchData();
     } catch (e) {
       setError(e.message || 'Failed to convert quote to job');
@@ -226,7 +219,7 @@ export default function QuotesPage({ token }) {
       {error ? <div className="form-error-box">{error}</div> : null}
       {success ? <div className="form-success-box">{success}</div> : null}
 
-      <div className="stats-grid" style={{ marginBottom: '20px' }}>
+      <div className="stats-grid stats-section">
         <div className="stat-card">
           <span className="stat-icon">📝</span>
           <div className="stat-info">
@@ -265,6 +258,7 @@ export default function QuotesPage({ token }) {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="search-input"
+            aria-label="Search quotes"
           />
           <select 
             value={filterStatus}
@@ -284,7 +278,7 @@ export default function QuotesPage({ token }) {
           <div className="modal-content modal-lg" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>{editingId ? '✏️ Edit Quote' : '➕ Create Quote'}</h2>
-              <button className="modal-close" onClick={cancelForm}>×</button>
+              <button type="button" className="modal-close" onClick={cancelForm} aria-label="Close dialog">×</button>
             </div>
             <form onSubmit={handleSubmit}>
               <div className="form-section">
@@ -330,14 +324,14 @@ export default function QuotesPage({ token }) {
                   </div>
                 </div>
 
-                <h3 style={{ marginTop: '20px', marginBottom: '15px' }}>Line Items</h3>
+                <h3 className="line-items-title">Line Items</h3>
                 <div className="line-items-table">
                   <div className="line-items-header">
-                    <span style={{ flex: 3 }}>Description</span>
-                    <span style={{ flex: 1 }}>Qty</span>
-                    <span style={{ flex: 1 }}>Unit Price</span>
-                    <span style={{ flex: 1 }}>Total</span>
-                    <span style={{ width: '40px' }}></span>
+                    <span className="line-items-col line-items-col-desc">Description</span>
+                    <span className="line-items-col">Qty</span>
+                    <span className="line-items-col">Unit Price</span>
+                    <span className="line-items-col">Total</span>
+                    <span className="line-items-col line-items-col-actions"></span>
                   </div>
                   {draft.items.map((item, index) => (
                     <div key={index} className="line-item-row">
@@ -345,12 +339,14 @@ export default function QuotesPage({ token }) {
                         value={item.description}
                         onChange={(e) => updateItem(index, 'description', e.target.value)}
                         placeholder="Service description"
+                        aria-label={`Line item ${index + 1} description`}
                       />
                       <input
                         type="number"
                         value={item.quantity}
                         onChange={(e) => updateItem(index, 'quantity', parseInt(e.target.value) || 0)}
                         min="1"
+                        aria-label={`Line item ${index + 1} quantity`}
                       />
                       <input
                         type="number"
@@ -358,10 +354,12 @@ export default function QuotesPage({ token }) {
                         value={item.unit_price}
                         onChange={(e) => updateItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
                         min="0"
+                        aria-label={`Line item ${index + 1} unit price`}
                       />
                       <input
                         value={'$' + (item.quantity * item.unit_price).toFixed(2)}
                         disabled
+                        aria-label={`Line item ${index + 1} total`}
                       />
                       <button 
                         type="button" 
@@ -378,7 +376,7 @@ export default function QuotesPage({ token }) {
                   </div>
                 </div>
 
-                <button type="button" className="btn-secondary" onClick={addItem} style={{ marginTop: '10px', marginBottom: '20px' }}>+ Add Line Item</button>
+                <button type="button" className="btn-secondary line-items-add-btn" onClick={addItem}>+ Add Line Item</button>
 
                 <div className="form-actions">
                   <button type="submit" className="btn-primary">{editingId ? 'Update Quote' : 'Create Quote'}</button>
@@ -389,6 +387,45 @@ export default function QuotesPage({ token }) {
           </div>
         </div>
       )}
+
+      {convertDraft.quote ? (
+        <div className="modal-backdrop" onClick={closeConvertModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>Create Job from Quote</h2>
+              <button type="button" className="modal-close" onClick={closeConvertModal} aria-label="Close dialog">&times;</button>
+            </div>
+            <div className="form-section">
+              <div className="form-grid">
+                <div className="form-group full-width">
+                  <label>Quote</label>
+                  <input value={`${convertDraft.quote.id} - ${convertDraft.quote.title || ''}`} disabled />
+                </div>
+                <div className="form-group">
+                  <label>Scheduled Date *</label>
+                  <input
+                    type="date"
+                    value={convertDraft.scheduledDate}
+                    onChange={(e) => setConvertDraft((prev) => ({ ...prev, scheduledDate: e.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button type="button" className="btn-secondary" onClick={closeConvertModal}>Cancel</button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleConvertToJob}
+                  disabled={!convertDraft.scheduledDate}
+                >
+                  Create Job
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {loading ? <p className="loading">Loading quotes...</p> : null}
       {!loading && !quotes.length ? <p className="empty-state">No quotes yet. Create your first quote!</p> : null}
@@ -422,7 +459,7 @@ export default function QuotesPage({ token }) {
                   </>
                 )}
                 {quote.status === 'accepted' && !quote.jobId && (
-                  <button className="btn-primary" onClick={() => handleConvertToJob(quote)}>📋 Create Job</button>
+                  <button className="btn-primary" onClick={() => openConvertModal(quote)}>Create Job</button>
                 )}
                 <button className="btn-secondary" onClick={() => handleEdit(quote)}>✏️ Edit</button>
                 <button className="btn-danger" onClick={() => handleDelete(quote.id)}>🗑️ Delete</button>

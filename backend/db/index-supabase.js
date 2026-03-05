@@ -187,7 +187,10 @@ const createDb = () => {
             inventory: await loadInventory(),
             equipment: await loadEquipment(),
             quotes: await loadQuotes(),
-            technicians: await loadTechnicians()
+            recurring: await loadRecurring(),
+            technicians: await loadTechnicians(),
+            completionProofs: await loadCompletionProofs(),
+            inventoryReservations: await loadInventoryReservations()
         };
     };
 
@@ -339,6 +342,106 @@ const createDb = () => {
             hire_date: row.hire_date,
             notes: row.notes || ''
         }));
+    };
+
+    const loadAppSettings = async () => {
+        try {
+            const { data, error } = await supabase.from('app_settings').select('key,value_json');
+            if (error) {
+                console.warn(`App settings table not available: ${error.message}`);
+                return {};
+            }
+            const settings = {};
+            for (const row of data || []) {
+                if (!row || !row.key) continue;
+                settings[row.key] = asJson(row.value_json, {});
+            }
+            return settings;
+        } catch (err) {
+            console.warn(`Failed to load app settings: ${err.message}`);
+            return {};
+        }
+    };
+
+    const loadRecurring = async () => {
+        const { data } = await supabase.from('recurring_jobs').select('*').order('created_at', { ascending: false });
+        if (!data) return [];
+        return data.map(row => ({
+            id: row.id,
+            customerId: row.customer_id || '',
+            title: row.title,
+            description: row.description || '',
+            frequency: row.frequency || '',
+            interval_value: Number(row.interval_value || 1),
+            interval_unit: row.interval_unit || 'months',
+            start_date: row.start_date || null,
+            end_date: row.end_date || null,
+            status: row.status || 'active',
+            assignedTo: row.assigned_to || '',
+            category: row.category || 'maintenance',
+            priority: row.priority || 'medium',
+            estimated_duration_hours: Number(row.estimated_duration_hours || 1),
+            created_by: row.created_by || '',
+            created_at: row.created_at
+        }));
+    };
+
+    const loadCompletionProofs = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('job_completion_proofs')
+                .select('*')
+                .order('submitted_at', { ascending: false });
+            if (error) {
+                console.warn(`Completion proofs table not available: ${error.message}`);
+                return [];
+            }
+            if (!data) return [];
+            return data.map((row) => ({
+                id: row.id,
+                jobId: row.job_id || '',
+                signatureName: row.signature_name || '',
+                signatureData: row.signature_data || '',
+                evidenceSummary: row.evidence_summary || '',
+                customerAccepted: Boolean(row.customer_accepted),
+                evidencePhotoIds: asJson(row.evidence_photo_ids_json, []),
+                submittedBy: row.submitted_by || '',
+                submittedAt: row.submitted_at || row.created_at || new Date().toISOString(),
+            }));
+        } catch (err) {
+            console.warn(`Failed to load completion proofs: ${err.message}`);
+            return [];
+        }
+    };
+
+    const loadInventoryReservations = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('job_inventory_reservations')
+                .select('*')
+                .order('reserved_at', { ascending: false });
+            if (error) {
+                console.warn(`Inventory reservations table not available: ${error.message}`);
+                return [];
+            }
+            if (!data) return [];
+            return data.map((row) => ({
+                id: row.id,
+                jobId: row.job_id || '',
+                inventoryId: row.inventory_id || '',
+                inventoryName: row.inventory_name || '',
+                quantity: Number(row.quantity || 0),
+                status: row.status || 'reserved',
+                reservedBy: row.reserved_by || '',
+                reservedAt: row.reserved_at || row.created_at || new Date().toISOString(),
+                consumedBy: row.consumed_by || '',
+                consumedAt: row.consumed_at || '',
+                consumedQuantity: Number(row.consumed_quantity || 0),
+            }));
+        } catch (err) {
+            console.warn(`Failed to load inventory reservations: ${err.message}`);
+            return [];
+        }
     };
 
     const persistCustomer = async (customer) => {
@@ -550,6 +653,31 @@ const createDb = () => {
         await supabase.from('quotes').delete().eq('id', id);
     };
 
+    const persistRecurring = async (item) => {
+        await supabase.from('recurring_jobs').upsert({
+            id: item.id,
+            customer_id: item.customerId || null,
+            title: item.title,
+            description: item.description || null,
+            frequency: item.frequency || null,
+            interval_value: item.interval_value || 1,
+            interval_unit: item.interval_unit || 'months',
+            start_date: item.start_date || null,
+            end_date: item.end_date || null,
+            status: item.status || 'active',
+            assigned_to: item.assignedTo || null,
+            category: item.category || 'maintenance',
+            priority: item.priority || 'medium',
+            estimated_duration_hours: item.estimated_duration_hours || 1,
+            created_by: item.created_by || null,
+            created_at: item.created_at || new Date().toISOString()
+        });
+    };
+
+    const deleteRecurring = async (id) => {
+        await supabase.from('recurring_jobs').delete().eq('id', id);
+    };
+
     const persistTechnician = async (technician) => {
         await supabase.from('technicians').upsert({
             id: technician.id,
@@ -572,6 +700,76 @@ const createDb = () => {
         await supabase.from('technicians').delete().eq('id', id);
     };
 
+    const persistAppSetting = async (key, value) => {
+        try {
+            const { error } = await supabase.from('app_settings').upsert({
+                key,
+                value_json: value,
+                updated_at: new Date().toISOString()
+            });
+            if (error) {
+                console.warn(`Failed to persist app setting '${key}': ${error.message}`);
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.warn(`Failed to persist app setting '${key}': ${err.message}`);
+            return false;
+        }
+    };
+
+    const persistCompletionProof = async (proof) => {
+        try {
+            const { error } = await supabase.from('job_completion_proofs').upsert({
+                id: proof.id,
+                job_id: proof.jobId,
+                signature_name: proof.signatureName || null,
+                signature_data: proof.signatureData || null,
+                evidence_summary: proof.evidenceSummary || null,
+                customer_accepted: proof.customerAccepted === true,
+                evidence_photo_ids_json: proof.evidencePhotoIds || [],
+                submitted_by: proof.submittedBy || null,
+                submitted_at: proof.submittedAt || new Date().toISOString(),
+                created_at: proof.created_at || new Date().toISOString()
+            });
+            if (error) {
+                console.warn(`Failed to persist completion proof for '${proof.jobId}': ${error.message}`);
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.warn(`Failed to persist completion proof for '${proof.jobId}': ${err.message}`);
+            return false;
+        }
+    };
+
+    const persistInventoryReservation = async (reservation) => {
+        try {
+            const { error } = await supabase.from('job_inventory_reservations').upsert({
+                id: reservation.id,
+                job_id: reservation.jobId,
+                inventory_id: reservation.inventoryId,
+                inventory_name: reservation.inventoryName || null,
+                quantity: reservation.quantity || 0,
+                status: reservation.status || 'reserved',
+                reserved_by: reservation.reservedBy || null,
+                reserved_at: reservation.reservedAt || new Date().toISOString(),
+                consumed_by: reservation.consumedBy || null,
+                consumed_at: reservation.consumedAt || null,
+                consumed_quantity: reservation.consumedQuantity || 0,
+                created_at: reservation.created_at || new Date().toISOString()
+            });
+            if (error) {
+                console.warn(`Failed to persist inventory reservation for '${reservation.jobId}': ${error.message}`);
+                return false;
+            }
+            return true;
+        } catch (err) {
+            console.warn(`Failed to persist inventory reservation for '${reservation.jobId}': ${err.message}`);
+            return false;
+        }
+    };
+
     return {
         bootstrap,
         loadUsers,
@@ -585,7 +783,11 @@ const createDb = () => {
         loadInventory,
         loadEquipment,
         loadQuotes,
+        loadRecurring,
         loadTechnicians,
+        loadCompletionProofs,
+        loadInventoryReservations,
+        loadAppSettings,
         persistCustomer,
         deleteCustomer,
         persistJob,
@@ -603,8 +805,13 @@ const createDb = () => {
         deleteEquipment,
         persistQuote,
         deleteQuote,
+        persistRecurring,
+        deleteRecurring,
         persistTechnician,
+        persistCompletionProof,
+        persistInventoryReservation,
         deleteTechnician,
+        persistAppSetting,
         supabase
     };
 };
