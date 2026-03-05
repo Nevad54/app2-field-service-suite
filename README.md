@@ -203,9 +203,9 @@ The app defaults to in-memory storage for demo purposes. To enable persistent st
 1. Create a free account at [supabase.com](https://supabase.com)
 2. Create a new project and get your credentials:
    - Project URL
-   - Anon/Public API Key
+   - Anon API Key
    - Service Role Key (recommended for backend)
-   - Create a Storage bucket named `job-photos` (set bucket to Public)
+   - Create a Storage bucket named `job-photos` (private bucket, recommended for signed URLs)
 3. In Supabase SQL Editor, run:
    - `backend/supabase-schema-complete.sql` for first-time setup
    - `backend/supabase-upgrade.sql` if your tables already exist
@@ -216,6 +216,7 @@ The app defaults to in-memory storage for demo purposes. To enable persistent st
    SUPABASE_ANON_KEY=your_supabase_anon_key
    SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
    SUPABASE_STORAGE_BUCKET=job-photos
+   SUPABASE_SIGNED_URL_TTL=3600
    
 ```
 5. Run the backend with Supabase mode:
@@ -227,7 +228,8 @@ The app defaults to in-memory storage for demo purposes. To enable persistent st
 ```
 6. Start frontend and point it to backend API:
    - Create `frontend/.env.local`:
-   - `REACT_APP_API_BASE_URL=http://localhost:3002`
+   - Local dev: `REACT_APP_API_BASE_URL=http://localhost:3002`
+   - Production: `REACT_APP_API_BASE_URL=https://<your-render-service>.onrender.com`
    - Run `cd frontend && npm start`
 
 ### Option 2: Local SQLite

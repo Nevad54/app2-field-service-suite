@@ -11,6 +11,7 @@ const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const JOB_UPLOADS_DIR = path.join(UPLOADS_DIR, 'jobs');
 const PHOTO_TAGS = new Set(['before', 'after', 'damage', 'parts', 'other']);
 const SUPABASE_STORAGE_BUCKET = String(process.env.SUPABASE_STORAGE_BUCKET || 'job-photos').trim();
+const SIGNED_URL_TTL_SECONDS = Number(process.env.SUPABASE_SIGNED_URL_TTL || 3600);
 
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '10mb' }));
@@ -23,6 +24,7 @@ const getStoragePathFromPhoto = (photo) => {
     if (typeof photo.storagePath === 'string' && photo.storagePath.trim()) return photo.storagePath.trim();
     const data = String(photo.data || '');
     if (!data) return '';
+    if (data.startsWith('storage:')) return data.slice('storage:'.length);
     const publicNeedle = `/storage/v1/object/public/${SUPABASE_STORAGE_BUCKET}/`;
     const signNeedle = `/storage/v1/object/sign/${SUPABASE_STORAGE_BUCKET}/`;
     const needle = data.includes(publicNeedle) ? publicNeedle : (data.includes(signNeedle) ? signNeedle : '');
@@ -35,6 +37,27 @@ const getStoragePathFromPhoto = (photo) => {
         return rawPath;
     }
 };
+
+const withSignedPhoto = async (photo) => {
+    const storagePath = getStoragePathFromPhoto(photo);
+    if (!storagePath) return photo;
+    const { data, error } = await dbInstance.supabase.storage
+        .from(SUPABASE_STORAGE_BUCKET)
+        .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
+    if (error || !data?.signedUrl) {
+        if (error) console.error('Failed to sign URL:', error.message);
+        return photo;
+    }
+    return { ...photo, storagePath, data: data.signedUrl };
+};
+
+const withSignedJobPhotos = async (job) => {
+    if (!job || !Array.isArray(job.photos) || job.photos.length === 0) return job;
+    const signedPhotos = await Promise.all(job.photos.map((photo) => withSignedPhoto(photo)));
+    return { ...job, photos: signedPhotos };
+};
+
+const withSignedJobsPhotos = async (jobs) => Promise.all((jobs || []).map((job) => withSignedJobPhotos(job)));
 
 let dbInstance;
 let memoryCache = {
@@ -281,10 +304,11 @@ const startServer = async () => {
         return res.json({ token, user: tokenUser });
     });
 
-    app.get('/api/client/jobs', requireAuth, (req, res) => {
+    app.get('/api/client/jobs', requireAuth, async (req, res) => {
         if (req.authUser.role !== 'client') return res.status(403).json({ error: 'Forbidden' });
         const clientJobs = memoryCache.jobs.filter((job) => job.customerId === req.authUser.id);
-        res.json(clientJobs);
+        const signedJobs = await withSignedJobsPhotos(clientJobs);
+        res.json(signedJobs);
     });
 
     app.get('/api/client/invoices', requireAuth, (req, res) => {
@@ -349,14 +373,19 @@ const startServer = async () => {
     });
 
     // ============== JOBS ENDPOINTS ==============
-    app.get('/api/jobs', requireAuth, (req, res) => {
+    app.get('/api/jobs', requireAuth, async (req, res) => {
         if (req.authUser.role === 'technician') {
-            return res.json(memoryCache.jobs.filter((job) => job.assignedTo === req.authUser.username));
+            const jobs = memoryCache.jobs.filter((job) => job.assignedTo === req.authUser.username);
+            const signedJobs = await withSignedJobsPhotos(jobs);
+            return res.json(signedJobs);
         }
         if (req.authUser.role === 'client') {
-            return res.json(memoryCache.jobs.filter((job) => job.customerId === req.authUser.id));
+            const jobs = memoryCache.jobs.filter((job) => job.customerId === req.authUser.id);
+            const signedJobs = await withSignedJobsPhotos(jobs);
+            return res.json(signedJobs);
         }
-        return res.json(memoryCache.jobs);
+        const signedJobs = await withSignedJobsPhotos(memoryCache.jobs);
+        return res.json(signedJobs);
     });
 
     const nextJobId = () => {
@@ -493,13 +522,13 @@ const startServer = async () => {
         if (uploadErr) {
             return res.status(500).json({ error: `Failed to upload to Supabase Storage: ${uploadErr.message}` });
         }
-        const { data: publicData } = dbInstance.supabase.storage
+        const { data: signedData } = await dbInstance.supabase.storage
             .from(SUPABASE_STORAGE_BUCKET)
-            .getPublicUrl(objectPath);
+            .createSignedUrl(objectPath, SIGNED_URL_TTL_SECONDS);
 
         const photoRecord = {
             id: fileId,
-            data: publicData?.publicUrl || '',
+            data: `storage:${objectPath}`,
             mimeType,
             uploadedBy: req.authUser.username,
             uploadedAt: new Date().toISOString(),
@@ -513,7 +542,10 @@ const startServer = async () => {
         await dbInstance.persistJob(existing);
 
         await logActivity('job', existing.id, req.authUser.username, 'photo_added', `Photo added to ${existing.id}`);
-        return res.status(201).json(photoRecord);
+        return res.status(201).json({
+            ...photoRecord,
+            data: signedData?.signedUrl || photoRecord.data,
+        });
     });
 
     app.delete('/api/jobs/:id/photos/:photoId', requireAuth, async (req, res) => {
@@ -1001,9 +1033,10 @@ const startServer = async () => {
     });
 
     // ============== SCHEDULE ENDPOINT ==============
-    app.get('/api/schedule', requireAuth, (req, res) => {
+    app.get('/api/schedule', requireAuth, async (req, res) => {
         const scheduledJobs = memoryCache.jobs.filter(job => job.scheduledDate);
-        res.json(scheduledJobs);
+        const signedJobs = await withSignedJobsPhotos(scheduledJobs);
+        res.json(signedJobs);
     });
 
     // ============== INVENTORY ENDPOINTS ==============
