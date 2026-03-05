@@ -1720,9 +1720,9 @@ function JobsPage({ token, user }) {
 
                   <div className="job-action-buttons">
                     <div className="photo-upload-controls">
-                      <span className="photo-upload-title">Add Photo</span>
+                      <span className="photo-upload-title">Photo Upload</span>
                       <div className="photo-upload-row">
-                        <label htmlFor={`photo-tag-${job.id}`}>Type</label>
+                        <label htmlFor={`photo-tag-${job.id}`}>Tag</label>
                         <select
                           id={`photo-tag-${job.id}`}
                           value={getPhotoTagDraft(job.id).tag}
@@ -1746,17 +1746,17 @@ function JobsPage({ token, user }) {
                         ) : null}
                         <button
                           type="button"
-                          className="btn-secondary"
+                          className="btn-primary photo-add-btn"
                           onClick={() => handlePhotoUpload(job.id)}
                           disabled={workingId === job.id}
                         >
-                          Add Photo
+                          Upload Photo
                         </button>
                       </div>
                       <span className="photo-upload-hint">Type applies to the photo you upload now.</span>
                     </div>
                     {canManageJobs && (
-                      <>
+                      <div className="manager-job-actions">
                         <button
                           type="button"
                           className="btn-primary"
@@ -1773,7 +1773,7 @@ function JobsPage({ token, user }) {
                         >
                           Delete Job
                         </button>
-                      </>
+                      </div>
                     )}
                   </div>
                 </div>

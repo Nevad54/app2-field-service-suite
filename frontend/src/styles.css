@@ -450,15 +450,24 @@ body {
 .job-invoice { margin-bottom: 16px; }
 .invoice-badge { display: inline-flex; padding: 6px 12px; background: var(--accent-light); color: var(--accent); border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 500; }
 .job-times { margin-top: 12px; padding: 12px; background: var(--success-light); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--success); }
-.job-action-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+.job-action-buttons {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  padding-top: 10px;
+  margin-top: 8px;
+  border-top: 1px dashed var(--border);
+}
 .photo-upload-controls {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
+  min-width: 320px;
 }
 .photo-upload-title { font-size: 0.8rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
 .photo-upload-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -473,6 +482,15 @@ body {
   font-size: 0.85rem;
 }
 .photo-upload-hint { font-size: 0.75rem; color: var(--text-muted); }
+.photo-add-btn { min-width: 140px; }
+.manager-job-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-left: 16px;
+  border-left: 1px solid var(--border);
+}
 .tech-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; gap: 12px; flex-wrap: wrap; }
 .completed-badge { color: var(--success); font-weight: 600; padding: 8px 16px; background: var(--success-light); border-radius: var(--radius-sm); }
 .job-create-form { margin-bottom: 24px; }
@@ -1107,5 +1125,19 @@ body {
     border: none;
     padding-left: 16px;
     background: var(--bg-tertiary);
+  }
+
+  .job-action-buttons { gap: 10px; border-top-style: solid; }
+  .photo-upload-controls { width: 100%; min-width: 0; }
+  .photo-upload-row { width: 100%; }
+  .photo-upload-row select,
+  .photo-upload-row input,
+  .photo-add-btn { width: 100%; min-width: 0; }
+  .manager-job-actions {
+    width: 100%;
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
   }
 }
