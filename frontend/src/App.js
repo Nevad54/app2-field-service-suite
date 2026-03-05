@@ -1720,26 +1720,40 @@ function JobsPage({ token, user }) {
 
                   <div className="job-action-buttons">
                     <div className="photo-upload-controls">
-                      <select
-                        value={getPhotoTagDraft(job.id).tag}
-                        onChange={(e) => updatePhotoTagDraft(job.id, 'tag', e.target.value)}
-                        disabled={workingId === job.id}
-                      >
-                        <option value="before">Before</option>
-                        <option value="after">After</option>
-                        <option value="damage">Damage</option>
-                        <option value="parts">Parts</option>
-                        <option value="other">Other</option>
-                      </select>
-                      {getPhotoTagDraft(job.id).tag === 'other' ? (
-                        <input
-                          type="text"
-                          placeholder="Custom label"
-                          value={getPhotoTagDraft(job.id).otherText}
-                          onChange={(e) => updatePhotoTagDraft(job.id, 'otherText', e.target.value)}
+                      <span className="photo-upload-title">Add Photo</span>
+                      <div className="photo-upload-row">
+                        <label htmlFor={`photo-tag-${job.id}`}>Type</label>
+                        <select
+                          id={`photo-tag-${job.id}`}
+                          value={getPhotoTagDraft(job.id).tag}
+                          onChange={(e) => updatePhotoTagDraft(job.id, 'tag', e.target.value)}
                           disabled={workingId === job.id}
-                        />
-                      ) : null}
+                        >
+                          <option value="before">Before</option>
+                          <option value="after">After</option>
+                          <option value="damage">Damage</option>
+                          <option value="parts">Parts</option>
+                          <option value="other">Other</option>
+                        </select>
+                        {getPhotoTagDraft(job.id).tag === 'other' ? (
+                          <input
+                            type="text"
+                            placeholder="Custom label"
+                            value={getPhotoTagDraft(job.id).otherText}
+                            onChange={(e) => updatePhotoTagDraft(job.id, 'otherText', e.target.value)}
+                            disabled={workingId === job.id}
+                          />
+                        ) : null}
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => handlePhotoUpload(job.id)}
+                          disabled={workingId === job.id}
+                        >
+                          Add Photo
+                        </button>
+                      </div>
+                      <span className="photo-upload-hint">Type applies to the photo you upload now.</span>
                     </div>
                     {canManageJobs && (
                       <>
@@ -1749,7 +1763,7 @@ function JobsPage({ token, user }) {
                           onClick={() => handleManagerUpdate(job)}
                           disabled={workingId === job.id}
                         >
-                          {workingId === job.id ? 'Saving...' : '💾 Save Changes'}
+                          {workingId === job.id ? 'Saving...' : 'Save Changes'}
                         </button>
                         <button
                           type="button"
@@ -1757,19 +1771,10 @@ function JobsPage({ token, user }) {
                           onClick={() => handleJobDelete(job.id)}
                           disabled={workingId === job.id}
                         >
-                          🗑️ Delete Job
+                          Delete Job
                         </button>
                       </>
                     )}
-                    
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => handlePhotoUpload(job.id)}
-                      disabled={workingId === job.id}
-                    >
-                      📷 Add Photo
-                    </button>
                   </div>
                 </div>
               )}
