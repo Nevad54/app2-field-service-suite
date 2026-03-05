@@ -275,6 +275,7 @@ const normalizeJob = (job) => {
   return {
    ...photo,
    tag: String(photo.tag || 'other').toLowerCase(),
+   tagNote: String(photo.tagNote || ''),
   };
  });
  if (!Array.isArray(job.partsUsed)) job.partsUsed = [];
@@ -1430,6 +1431,7 @@ app.post('/api/jobs/:id/photos', requireAuth, (req, res) => {
  const incomingTag = String(req.body.tag || 'other').toLowerCase().trim();
  const allowedTags = new Set(['before', 'after', 'damage', 'parts', 'other']);
  const tag = allowedTags.has(incomingTag) ? incomingTag : 'other';
+ const tagNote = tag === 'other' ? String(req.body.tagNote || '').trim().slice(0, 80) : '';
  const match = photo.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
  if (!match) {
    return res.status(400).json({ error: 'Invalid photo payload' });
@@ -1458,7 +1460,8 @@ app.post('/api/jobs/:id/photos', requireAuth, (req, res) => {
    uploadedBy: req.authUser.username,
    uploadedAt: new Date().toISOString(),
    tag,
- };
+   tagNote,
+  };
  existing.photos.push(photoRecord);
  persistPhotosForJob(existing.id, existing.photos);
  existing.updated_at = new Date().toISOString();

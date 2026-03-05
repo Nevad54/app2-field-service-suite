@@ -501,6 +501,7 @@ const startServer = async () => {
         const photo = String(req.body.photo || '');
         const incomingTag = String(req.body.tag || 'other').toLowerCase().trim();
         const tag = PHOTO_TAGS.has(incomingTag) ? incomingTag : 'other';
+        const tagNote = tag === 'other' ? String(req.body.tagNote || '').trim().slice(0, 80) : '';
         const match = photo.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
         if (!match) return res.status(400).json({ error: 'Invalid photo payload' });
         if (photo.length > 8_000_000) return res.status(400).json({ error: 'Photo is too large' });
@@ -533,6 +534,7 @@ const startServer = async () => {
             uploadedBy: req.authUser.username,
             uploadedAt: new Date().toISOString(),
             tag,
+            tagNote,
             storagePath: objectPath,
         };
         if (!Array.isArray(existing.photos)) existing.photos = [];

@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS job_photos (
   mime_type TEXT,
   uploaded_by TEXT,
   uploaded_at TIMESTAMPTZ DEFAULT NOW(),
-  tag TEXT DEFAULT 'other'
+  tag TEXT DEFAULT 'other',
+  tag_note TEXT
 );
 
 CREATE TABLE IF NOT EXISTS job_worklogs (

@@ -24,6 +24,13 @@ const formatPhotoTag = (value) => {
   return next.charAt(0).toUpperCase() + next.slice(1);
 };
 
+const formatPhotoLabel = (photo) => {
+  const tag = normalizePhotoTag(photo?.tag || 'other') || 'other';
+  const note = String(photo?.tagNote || '').trim();
+  if (tag === 'other' && note) return note;
+  return formatPhotoTag(tag);
+};
+
 const loadStoredDarkMode = () => {
   try {
     const raw = localStorage.getItem(DARK_MODE_KEY);
@@ -438,7 +445,7 @@ function ClientPortalPage({ token, user, onLogout }) {
                         {job.photos.map((photo, idx) => (
                           <div key={photo.id || idx} className="photo-item">
                             <img src={photo.data || photo} alt={`Job photo ${idx + 1}`} />
-                            <span className="photo-tag-badge">{formatPhotoTag(photo.tag)}</span>
+                            <span className="photo-tag-badge">{formatPhotoLabel(photo)}</span>
                           </div>
                         ))}
                       </div>
@@ -1027,6 +1034,7 @@ function JobsPage({ token, user }) {
   const [showJobDetails, setShowJobDetails] = useState(null);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [worklogDrafts, setWorklogDrafts] = useState({});
+  const [photoTagDrafts, setPhotoTagDrafts] = useState({});
   const canManageJobs = user.role === 'admin' || user.role === 'dispatcher';
   const isTechnician = user.role === 'technician';
   const canEditWorklog = canManageJobs || isTechnician;
@@ -1143,12 +1151,32 @@ function JobsPage({ token, user }) {
     return customer ? customer.name : 'Unknown';
   };
 
+  const getPhotoTagDraft = (jobId) => {
+    const existing = photoTagDrafts[jobId];
+    if (existing) return existing;
+    return { tag: 'after', otherText: '' };
+  };
+
+  const updatePhotoTagDraft = (jobId, key, value) => {
+    setPhotoTagDrafts((prev) => ({
+      ...prev,
+      [jobId]: {
+        ...getPhotoTagDraft(jobId),
+        [key]: value,
+      },
+    }));
+  };
+
   const handlePhotoUpload = async (jobId) => {
-    const tagInput = window.prompt('Set photo tag: before, after, damage, parts, other', 'after');
-    if (tagInput === null) return;
-    const tag = normalizePhotoTag(tagInput);
+    const tagDraft = getPhotoTagDraft(jobId);
+    const tag = normalizePhotoTag(tagDraft.tag);
     if (!tag) {
       setError('Invalid tag. Use: before, after, damage, parts, or other.');
+      return;
+    }
+    const tagNote = tag === 'other' ? String(tagDraft.otherText || '').trim() : '';
+    if (tag === 'other' && !tagNote) {
+      setError('Please enter a custom label for "Other".');
       return;
     }
 
@@ -1183,11 +1211,11 @@ function JobsPage({ token, user }) {
           await apiFetch(`/api/jobs/${encodeURIComponent(jobId)}/photos`, {
             token,
             method: 'POST',
-            body: { photo: dataUrl, tag }
+            body: { photo: dataUrl, tag, tagNote }
           });
         }
         await fetchJobs();
-        setSuccess(`Photo uploaded successfully (${formatPhotoTag(tag)}).`);
+        setSuccess(`Photo uploaded successfully (${tag === 'other' ? tagNote : formatPhotoTag(tag)}).`);
       } catch (err) {
         setError(err.message || 'Failed to upload photo');
       } finally {
@@ -1659,7 +1687,7 @@ function JobsPage({ token, user }) {
                         {job.photos.map((photo, idx) => (
                           <div key={photo.id || idx} className="photo-item">
                             <img src={photo.data || photo} alt={`Job photo ${idx + 1}`} />
-                            <span className="photo-tag-badge">{formatPhotoTag(photo.tag)}</span>
+                            <span className="photo-tag-badge">{formatPhotoLabel(photo)}</span>
                             {canManageJobs ? (
                               <button
                                 type="button"
@@ -1691,6 +1719,28 @@ function JobsPage({ token, user }) {
                   )}
 
                   <div className="job-action-buttons">
+                    <div className="photo-upload-controls">
+                      <select
+                        value={getPhotoTagDraft(job.id).tag}
+                        onChange={(e) => updatePhotoTagDraft(job.id, 'tag', e.target.value)}
+                        disabled={workingId === job.id}
+                      >
+                        <option value="before">Before</option>
+                        <option value="after">After</option>
+                        <option value="damage">Damage</option>
+                        <option value="parts">Parts</option>
+                        <option value="other">Other</option>
+                      </select>
+                      {getPhotoTagDraft(job.id).tag === 'other' ? (
+                        <input
+                          type="text"
+                          placeholder="Custom label"
+                          value={getPhotoTagDraft(job.id).otherText}
+                          onChange={(e) => updatePhotoTagDraft(job.id, 'otherText', e.target.value)}
+                          disabled={workingId === job.id}
+                        />
+                      ) : null}
+                    </div>
                     {canManageJobs && (
                       <>
                         <button

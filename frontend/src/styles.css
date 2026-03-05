@@ -451,6 +451,16 @@ body {
 .invoice-badge { display: inline-flex; padding: 6px 12px; background: var(--accent-light); color: var(--accent); border-radius: var(--radius-sm); font-size: 0.85rem; font-weight: 500; }
 .job-times { margin-top: 12px; padding: 12px; background: var(--success-light); border-radius: var(--radius-sm); display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--success); }
 .job-action-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+.photo-upload-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.photo-upload-controls select,
+.photo-upload-controls input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+}
 .tech-actions { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); display: flex; gap: 12px; flex-wrap: wrap; }
 .completed-badge { color: var(--success); font-weight: 600; padding: 8px 16px; background: var(--success-light); border-radius: var(--radius-sm); }
 .job-create-form { margin-bottom: 24px; }
