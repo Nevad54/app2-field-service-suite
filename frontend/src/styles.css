@@ -313,6 +313,10 @@ textarea:focus-visible {
 .status-badge.high, .status-badge.delayed { background: var(--danger-light); color: var(--danger); }
 .status-badge.medium { background: var(--warning-light); color: var(--warning); }
 .status-badge.low { background: var(--bg-tertiary); color: var(--text-secondary); }
+.status-badge.active { background: var(--success-light); color: var(--success); }
+.status-badge.disabled { background: var(--danger-light); color: var(--danger); }
+.status-badge.locked { background: var(--warning-light); color: var(--warning); }
+.status-badge.invited { background: var(--bg-tertiary); color: var(--text-secondary); }
 
 /* Tables */
 .table-container { overflow-x: auto; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-secondary); }

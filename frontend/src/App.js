@@ -17,6 +17,37 @@ import {
   loadStoredDarkMode
 } from './authStorage';
 const PHOTO_TAG_OPTIONS = ['before', 'after', 'damage', 'parts', 'other'];
+const FRONTEND_ROLE_PERMISSIONS = Object.freeze({
+  admin: ['*'],
+  manager: [
+    'customers.manage',
+    'jobs.manage',
+    'dispatch.manage',
+    'projects.manage',
+    'team.manage',
+    'tools.manage',
+  ],
+  dispatcher: [
+    'customers.manage',
+    'jobs.manage',
+    'dispatch.manage',
+    'projects.manage',
+    'team.manage',
+    'tools.manage',
+  ],
+  technician: [
+    'jobs.execute.own',
+  ],
+  client: [
+    'client.portal',
+  ],
+});
+
+const hasFrontendPermission = (user, permission) => {
+  const role = String(user?.role || '').toLowerCase();
+  const allowed = FRONTEND_ROLE_PERMISSIONS[role] || [];
+  return allowed.includes('*') || allowed.includes(permission);
+};
 
 const normalizePhotoTag = (value) => {
   const next = String(value || '').toLowerCase().trim();
@@ -1091,7 +1122,7 @@ function SchedulePage({ token, user }) {
   const [optimization, setOptimization] = useState(null);
   const [loadingOptimization, setLoadingOptimization] = useState(false);
   const [applyingOptimizationId, setApplyingOptimizationId] = useState('');
-  const canEditDispatchSettings = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'dispatcher';
+  const canEditDispatchSettings = hasFrontendPermission(user, 'dispatch.manage');
 
   const fetchSchedule = useCallback(async () => {
     setLoading(true);
@@ -1505,7 +1536,7 @@ function JobsPage({ token, user }) {
     evidenceSummary: '',
     customerAccepted: false,
   });
-  const canManageJobs = user.role === 'admin' || user.role === 'manager' || user.role === 'dispatcher';
+  const canManageJobs = hasFrontendPermission(user, 'jobs.manage');
   const isTechnician = user.role === 'technician';
   const canEditWorklog = canManageJobs || isTechnician;
 
@@ -3267,6 +3298,129 @@ function ExportPage({ token }) {
   );
 }
 
+// ============== USERS PAGE ==============
+function UsersPage({ token, user }) {
+  const [users, setUsers] = useState([]);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [workingUserId, setWorkingUserId] = useState('');
+
+  const canManageAccounts = hasFrontendPermission(user, 'accounts.manage');
+
+  const fetchUsers = useCallback(async () => {
+    if (!canManageAccounts) return;
+    setLoading(true);
+    setError('');
+    try {
+      const data = await apiFetch('/api/users', { token });
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.message || 'Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  }, [canManageAccounts, token]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const updateStatus = async (userId, status) => {
+    setWorkingUserId(userId);
+    setError('');
+    setSuccess('');
+    try {
+      await apiFetch(`/api/users/${encodeURIComponent(userId)}/account-status`, {
+        token,
+        method: 'PATCH',
+        body: { status },
+      });
+      await fetchUsers();
+      setSuccess('Account status updated.');
+    } catch (e) {
+      setError(e.message || 'Failed to update account status');
+    } finally {
+      setWorkingUserId('');
+    }
+  };
+
+  if (!canManageAccounts) {
+    return (
+      <section className="card">
+        <h1>Users</h1>
+        <p className="empty-state">You do not have access to account management.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="card">
+      <div className="page-header">
+        <h1>Users</h1>
+        <button type="button" className="btn-secondary btn-small" onClick={fetchUsers} disabled={loading}>
+          Refresh
+        </button>
+      </div>
+
+      {error ? <div className="form-error-box">{error}</div> : null}
+      {success ? <div className="form-success-box">{success}</div> : null}
+      {loading ? <p className="loading">Loading users...</p> : null}
+      {!loading && users.length === 0 ? <p className="empty-state">No users found.</p> : null}
+
+      {!loading && users.length > 0 ? (
+        <div className="table-container">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((entry) => (
+                <tr key={entry.id}>
+                  <td>{entry.username}</td>
+                  <td>{entry.role}</td>
+                  <td>
+                    <span className={`status-badge ${entry.account_status || 'active'}`}>
+                      {entry.account_status || 'active'}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="inline-input-group">
+                      <select defaultValue={entry.account_status || 'active'} id={`status-${entry.id}`}>
+                        <option value="active">active</option>
+                        <option value="disabled">disabled</option>
+                        <option value="locked">locked</option>
+                        <option value="invited">invited</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="btn-primary btn-small"
+                        onClick={() => {
+                          const node = document.getElementById(`status-${entry.id}`);
+                          const nextStatus = node ? node.value : (entry.account_status || 'active');
+                          updateStatus(entry.id, nextStatus);
+                        }}
+                        disabled={workingUserId === entry.id}
+                      >
+                        {workingUserId === entry.id ? 'Saving...' : 'Apply'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 // ============== PROTECTED ROUTE ==============
 function ProtectedRoute({ isAuthed, children }) {
   if (!isAuthed) return <Navigate to="/login" replace />;
@@ -3365,7 +3519,8 @@ export default function App() {
     persistClientAuth(null);
   }, [persistClientAuth]);
 
-  const canManageCustomers = auth?.user?.role === 'admin' || auth?.user?.role === 'manager' || auth?.user?.role === 'dispatcher';
+  const canManageCustomers = hasFrontendPermission(auth?.user, 'customers.manage');
+  const canManageAccounts = hasFrontendPermission(auth?.user, 'accounts.manage');
   const unreadCount = notifications.filter(n => !n.read).length;
 
     const navLinks = useMemo(() => (
@@ -3380,6 +3535,7 @@ export default function App() {
       {isAuthed && canManageCustomers ? <NavLink to="/projects" onClick={() => setMobileNavOpen(false)}>Projects</NavLink> : null}
       {isAuthed && canManageCustomers ? <NavLink to="/project-planner" onClick={() => setMobileNavOpen(false)}>Planner</NavLink> : null}
       {isAuthed && canManageCustomers ? <NavLink to="/team" onClick={() => setMobileNavOpen(false)}>Team</NavLink> : null}
+      {isAuthed && canManageAccounts ? <NavLink to="/users" onClick={() => setMobileNavOpen(false)}>Users</NavLink> : null}
       {isAuthed && canManageCustomers ? (
         <div className="dropdown-container">
           <button className="dropdown-toggle" onClick={() => setShowToolsDropdown(!showToolsDropdown)}>
@@ -3644,6 +3800,14 @@ export default function App() {
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
                 <ExportPage token={auth?.token} />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="/users"
+            element={(
+              <ProtectedRoute isAuthed={isAuthed}>
+                <UsersPage token={auth?.token} user={auth?.user} />
               </ProtectedRoute>
             )}
           />

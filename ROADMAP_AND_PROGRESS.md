@@ -247,11 +247,23 @@ Date: 2026-03-06
      - manager is forbidden from account-admin APIs
      - admin can disable/reactivate technician account
      - disabled technician cannot authenticate
+12. Roles/accounts governance (phase 4):
+   - Added frontend permission map (`hasFrontendPermission`) to align route/component gating with backend permission model.
+   - Added admin-only account management page in frontend:
+     - route: `/users`
+     - lists users via `GET /api/users`
+     - updates account lifecycle status via `PATCH /api/users/:id/account-status`
+   - Added Users navigation entry visibility for account administrators only.
+   - Updated frontend role gates to use permission checks for key surfaces:
+     - dispatch settings/editor access
+     - job management controls
+     - back-office navigation grouping
 
 ## Validation Status
 
 1. Frontend build passes (2026-03-06) after Sprint 5 phase-2 accessibility work.
 2. Backend API regression tests pass (`17/17`, 2026-03-06) after roles/accounts governance phase 3.
+3. Frontend build passes (2026-03-06) after roles/accounts governance phase 4 (permission-map + users admin page).
 3. Runtime startup check passes with healthy ports and route validation (`start-app.ps1`, 2026-03-06):
    - `GET /api/status` responds
    - `GET /api/settings/dispatch` responds after auth
@@ -280,8 +292,9 @@ Date: 2026-03-06
 15. Sprint 5 sustained quality follow-up now includes roles/accounts hardening phase 1 (staff/client auth split + account status + password hashing upgrade path).
 16. Roles/accounts governance phase 2 is complete (`manager` role + permission middleware on sensitive operations).
 17. Roles/accounts governance phase 3 is complete (full mutating-route permission migration + account lifecycle APIs + session invalidation for non-active accounts).
-18. Next value is role governance phase 4: add frontend admin account-management UI and per-action permission mapping in frontend route/component gates.
+18. Roles/accounts governance phase 4 is complete (frontend admin user-management UI + permission-aligned visibility gates).
+19. Next value is role governance phase 5: add granular frontend action-level permission checks (delete/export/optimize controls) from shared permission catalog and wire audit-log UI filters for account lifecycle events.
 
 ## Suggested Next Task
 
-1. Implement roles/accounts phase 4: add admin user-management UI for account lifecycle actions and align frontend visibility logic to backend permission flags.
+1. Implement roles/accounts phase 5: complete granular frontend action-level permission gating and add account lifecycle audit views.
