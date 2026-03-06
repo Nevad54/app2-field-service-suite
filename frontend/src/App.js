@@ -607,9 +607,9 @@ const buildJobsDrilldownLabel = (drilldown) => {
     return 'Conflict focus.';
   }
   if (drilldown.riskType === 'unassigned') return 'Unassigned open jobs focus.';
-  if (drilldown.riskType === 'sla_overdue') return 'SLA overdue jobs focus.';
-  if (drilldown.riskType === 'sla_due') return `SLA due-soon focus (next ${drilldown.dueSoonDays} day(s)).`;
-  if (drilldown.riskType === 'sla') return `SLA risk focus (overdue + next ${drilldown.dueSoonDays} day(s)).`;
+  if (drilldown.riskType === 'sla_overdue') return 'Overdue deadline jobs focus.';
+  if (drilldown.riskType === 'sla_due') return `Due-soon deadline focus (next ${drilldown.dueSoonDays} day(s)).`;
+  if (drilldown.riskType === 'sla') return `Deadline risk focus (overdue + next ${drilldown.dueSoonDays} day(s)).`;
   return 'Focused job list.';
 };
 
@@ -730,7 +730,7 @@ function DashboardPage({ token, user }) {
               <span className="stat-icon">⏱️</span>
               <div className="stat-info">
                 <span className="stat-value">{insights.slaRisks.length}</span>
-                <span className="stat-label">SLA Risks</span>
+                <span className="stat-label">Deadline Risks</span>
               </div>
             </div>
             <div className={`stat-card ${insights.conflicts.length > 0 ? 'pending' : ''}`}>
@@ -745,6 +745,7 @@ function DashboardPage({ token, user }) {
           {(insights.conflicts.length > 0 || insights.slaRisks.length > 0 || insights.unassignedOpen > 0) && (
             <div className="dashboard-section">
               <h2>Dispatch Risk Board</h2>
+              <p className="hint">Deadline risks highlight jobs that are overdue or approaching their target service date.</p>
               <div className="risk-board">
                 {insights.conflicts.slice(0, 5).map((conflict) => (
                   <button
@@ -792,10 +793,10 @@ function DashboardPage({ token, user }) {
 
           {kpis ? (
             <div className="dashboard-section">
-              <h2>SLA and Operational KPIs</h2>
+              <h2>Deadline and Operational KPIs</h2>
               <div className="kpi-grid">
                 <div className="kpi-card">
-                  <span className="kpi-label">SLA On-Time Completion</span>
+                  <span className="kpi-label">On-Time Completion</span>
                   <strong className="kpi-value">{kpis.sla?.onTimeCompletionRatePct ?? 0}%</strong>
                 </div>
                 <div className="kpi-card">
@@ -803,7 +804,7 @@ function DashboardPage({ token, user }) {
                   <strong className="kpi-value">{kpis.sla?.overdueOpen ?? 0}</strong>
                 </div>
                 <div className="kpi-card">
-                  <span className="kpi-label">Due Soon Open Jobs</span>
+                  <span className="kpi-label">Jobs Due Soon</span>
                   <strong className="kpi-value">{kpis.sla?.dueSoonOpen ?? 0}</strong>
                 </div>
                 <div className="kpi-card">
@@ -1328,7 +1329,7 @@ function SchedulePage({ token, user }) {
               />
             </label>
             <label>
-              SLA due soon window (days)
+              Due-soon window (days)
               <input
                 type="number"
                 min="0"
@@ -1341,6 +1342,7 @@ function SchedulePage({ token, user }) {
               {savingSettings ? 'Saving...' : 'Save Dispatch Rules'}
             </button>
           </div>
+          <p className="hint">Jobs inside this due-soon window are flagged as deadline risks.</p>
         </form>
       ) : null}
 
@@ -1357,13 +1359,13 @@ function SchedulePage({ token, user }) {
             type="button"
             className={insights.slaRisks.length > 0 ? 'alert-pill alert-pill-btn danger' : 'alert-pill alert-pill-btn'}
             disabled={insights.slaRisks.length === 0}
-            aria-label={`Filter jobs by SLA risk. ${insights.slaRisks.length} risk jobs.`}
+            aria-label={`Filter jobs by deadline risk. ${insights.slaRisks.length} risk jobs.`}
             onClick={() => handleScheduleDrilldown({
               riskType: 'sla',
               dueSoonDays: normalizedDispatchSettings.slaDueSoonDays,
             })}
           >
-            SLA Risks: {insights.slaRisks.length}
+            Deadline Risks: {insights.slaRisks.length}
           </button>
           <button
             type="button"
@@ -1461,7 +1463,7 @@ function SchedulePage({ token, user }) {
                         {job.assignedTo && <span>🔧 {job.assignedTo}</span>}
                       </div>
                       <div className="schedule-alerts">
-                        {getJobRiskLabel(job) === 'overdue' ? <span className="mini-alert danger">SLA overdue</span> : null}
+                        {getJobRiskLabel(job) === 'overdue' ? <span className="mini-alert danger">Overdue deadline</span> : null}
                         {getJobRiskLabel(job) === 'due-today' ? <span className="mini-alert warning">Due today</span> : null}
                         {job.assignedTo && conflictIndex.get(`${job.assignedTo}::${job.scheduledDate}`) ? (
                           <span className="mini-alert warning">Tech conflict</span>

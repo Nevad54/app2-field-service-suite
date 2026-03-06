@@ -269,6 +269,16 @@ Date: 2026-03-06
      - new `Accounts` filter for `account_status` lifecycle events
      - account activity icon mapping for improved audit scanning
    - Added frontend access guardrails for Activity and Export pages when permission is missing (clear empty-state messaging).
+14. UX language clarity pass (user-facing terminology):
+   - Replaced SLA-heavy labels in Dashboard/Schedule with plain-language deadline wording:
+     - `SLA Risks` -> `Deadline Risks`
+     - `SLA and Operational KPIs` -> `Deadline and Operational KPIs`
+     - `SLA due soon window (days)` -> `Due-soon window (days)`
+   - Updated risk/drilldown language to plain user wording:
+     - overdue/due-soon focus labels now describe deadline behavior directly
+   - Added inline helper hints to explain deadline risk behavior:
+     - Dispatch Risk Board context text
+     - Dispatch settings due-soon window helper note
 
 ## Validation Status
 
@@ -276,6 +286,7 @@ Date: 2026-03-06
 2. Backend API regression tests pass (`17/17`, 2026-03-06) after roles/accounts governance phase 3.
 3. Frontend build passes (2026-03-06) after roles/accounts governance phase 4 (permission-map + users admin page).
 4. Frontend build and backend API regression pass after roles/accounts governance phase 5 (`17/17` API, 2026-03-06).
+5. Frontend build and backend API regression pass after UX language clarity pass (`17/17` API, 2026-03-06).
 3. Runtime startup check passes with healthy ports and route validation (`start-app.ps1`, 2026-03-06):
    - `GET /api/status` responds
    - `GET /api/settings/dispatch` responds after auth
@@ -306,7 +317,8 @@ Date: 2026-03-06
 17. Roles/accounts governance phase 3 is complete (full mutating-route permission migration + account lifecycle APIs + session invalidation for non-active accounts).
 18. Roles/accounts governance phase 4 is complete (frontend admin user-management UI + permission-aligned visibility gates).
 19. Roles/accounts governance phase 5 is complete (granular frontend permission gating + account lifecycle activity filtering).
-20. Next value is role governance phase 6: expose backend permission catalog via API and drive frontend permissions dynamically from server-provided capabilities.
+20. UX language clarity pass is complete for Dashboard/Schedule SLA terminology.
+21. Next value is role governance phase 6: expose backend permission catalog via API and drive frontend permissions dynamically from server-provided capabilities.
 
 ## Suggested Next Task
 
