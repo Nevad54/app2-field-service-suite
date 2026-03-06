@@ -399,12 +399,6 @@ const buildDashboardKpis = ({ jobs, settings, completionProofs, activityLogs, te
     };
 };
 
-const toSafeUser = (user) => ({
-    id: user.id,
-    username: user.username,
-    role: user.role,
-});
-
 const ROLE_PERMISSIONS = Object.freeze({
     admin: ['*'],
     manager: [
@@ -447,6 +441,26 @@ const ROLE_PERMISSIONS = Object.freeze({
     ],
 });
 
+const getPermissionsForRole = (role) => {
+    const normalizedRole = String(role || '').trim().toLowerCase();
+    const allowed = ROLE_PERMISSIONS[normalizedRole] || [];
+    return [...allowed];
+};
+
+const withResolvedPermissions = (user) => {
+    const permissions = getPermissionsForRole(user?.role);
+    return {
+        ...(user || {}),
+        permissions,
+    };
+};
+
+const toSafeUser = (user) => withResolvedPermissions({
+    id: user.id,
+    username: user.username,
+    role: user.role,
+});
+
 const normalizeAccountStatus = (value) => {
     const status = String(value || '').trim().toLowerCase();
     if (status === 'disabled' || status === 'locked' || status === 'invited') return status;
@@ -474,7 +488,8 @@ const requireAuth = async (req, res, next) => {
             return res.status(401).json({ error: 'Session expired' });
         }
     }
-    req.authUser = session.user;
+    req.authUser = withResolvedPermissions(session.user);
+    session.user = req.authUser;
     req.authToken = token;
     return next();
 };
@@ -487,8 +502,7 @@ const requireRoles = (allowedRoles) => (req, res, next) => {
 };
 
 const hasPermission = (user, permission) => {
-    const role = String(user?.role || '').toLowerCase();
-    const allowed = ROLE_PERMISSIONS[role] || [];
+    const allowed = Array.isArray(user?.permissions) ? user.permissions : getPermissionsForRole(user?.role);
     return allowed.includes('*') || allowed.includes(permission);
 };
 
@@ -928,6 +942,14 @@ const startServer = async () => {
         res.json({ user: req.authUser });
     });
 
+    app.get('/api/auth/capabilities', requireAuth, (req, res) => {
+        const role = String(req.authUser?.role || '').toLowerCase();
+        res.json({
+            role,
+            permissions: getPermissionsForRole(role),
+        });
+    });
+
     app.post('/api/auth/logout', requireAuth, async (req, res) => {
         sessions.delete(req.authToken);
         await dbInstance.deleteSession(req.authToken);
@@ -994,7 +1016,12 @@ const startServer = async () => {
         if (!customer) return res.status(401).json({ error: 'Invalid credentials' });
 
         const token = crypto.randomBytes(24).toString('hex');
-        const tokenUser = { id: customer.id, username: customer.name, role: 'client', email: customer.email };
+        const tokenUser = withResolvedPermissions({
+            id: customer.id,
+            username: customer.name,
+            role: 'client',
+            email: customer.email,
+        });
 
         sessions.set(token, { user: tokenUser, createdAt: Date.now() });
         await dbInstance.persistSession(token, tokenUser);

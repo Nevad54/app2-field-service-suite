@@ -10,6 +10,9 @@ const QUOTE_ROLE_PERMISSIONS = Object.freeze({
 });
 
 const canQuotePermission = (user, permission) => {
+  if (Array.isArray(user?.permissions) && user.permissions.length > 0) {
+    return user.permissions.includes('*') || user.permissions.includes(permission);
+  }
   const role = String(user?.role || '').toLowerCase();
   const allowed = QUOTE_ROLE_PERMISSIONS[role] || [];
   return allowed.includes('*') || allowed.includes(permission);

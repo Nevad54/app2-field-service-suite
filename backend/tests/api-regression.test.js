@@ -162,6 +162,27 @@ test('Staff login rejects client-role account', async () => {
   );
 });
 
+test('Auth payload includes permissions and capabilities endpoint is available', async () => {
+  const login = await api('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'manager', password: '1111' },
+  });
+  assert.equal(login.status, 200, 'Manager login should succeed');
+  assert.equal(login.payload.user.role, 'manager');
+  assert.ok(Array.isArray(login.payload.user.permissions), 'Login user should include permissions array');
+  assert.ok(login.payload.user.permissions.includes('dispatch.manage'), 'Manager permissions should include dispatch.manage');
+
+  const me = await api('/api/auth/me', { token: login.payload.token });
+  assert.equal(me.status, 200, '/api/auth/me should succeed');
+  assert.ok(Array.isArray(me.payload.user.permissions), '/api/auth/me user should include permissions array');
+
+  const capabilities = await api('/api/auth/capabilities', { token: login.payload.token });
+  assert.equal(capabilities.status, 200, '/api/auth/capabilities should succeed');
+  assert.equal(capabilities.payload.role, 'manager');
+  assert.ok(Array.isArray(capabilities.payload.permissions), 'Capabilities payload should include permissions array');
+  assert.ok(capabilities.payload.permissions.includes('dispatch.manage'), 'Capabilities should include dispatch.manage');
+});
+
 test('Technician lifecycle: worklog + checkin + checkout', async () => {
   const job = await api('/api/jobs', {
     method: 'POST',

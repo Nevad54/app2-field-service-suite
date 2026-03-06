@@ -279,6 +279,19 @@ Date: 2026-03-06
    - Added inline helper hints to explain deadline risk behavior:
      - Dispatch Risk Board context text
      - Dispatch settings due-soon window helper note
+15. Roles/accounts governance (phase 6):
+   - Added backend permission capability payloads in auth responses:
+     - `/api/auth/login` user now includes resolved `permissions`
+     - `/api/auth/me` user now includes resolved `permissions`
+   - Added backend capability endpoint:
+     - `GET /api/auth/capabilities` returns current role and resolved permission list
+   - Added auth-session permission normalization:
+     - legacy/stale sessions without permissions are auto-normalized by role at request time
+   - Updated frontend permission checks to be server-driven first:
+     - `hasFrontendPermission` now prefers `auth.user.permissions` and falls back to static role map only for backward compatibility
+     - Quotes page permission checks now use the same server-driven-first approach
+   - Expanded regression coverage:
+     - added API test validating login/me permission payload and capabilities endpoint contract
 
 ## Validation Status
 
@@ -287,6 +300,7 @@ Date: 2026-03-06
 3. Frontend build passes (2026-03-06) after roles/accounts governance phase 4 (permission-map + users admin page).
 4. Frontend build and backend API regression pass after roles/accounts governance phase 5 (`17/17` API, 2026-03-06).
 5. Frontend build and backend API regression pass after UX language clarity pass (`17/17` API, 2026-03-06).
+6. Frontend build and backend API regression pass after roles/accounts governance phase 6 (`18/18` API, 2026-03-06).
 3. Runtime startup check passes with healthy ports and route validation (`start-app.ps1`, 2026-03-06):
    - `GET /api/status` responds
    - `GET /api/settings/dispatch` responds after auth
@@ -318,8 +332,9 @@ Date: 2026-03-06
 18. Roles/accounts governance phase 4 is complete (frontend admin user-management UI + permission-aligned visibility gates).
 19. Roles/accounts governance phase 5 is complete (granular frontend permission gating + account lifecycle activity filtering).
 20. UX language clarity pass is complete for Dashboard/Schedule SLA terminology.
-21. Next value is role governance phase 6: expose backend permission catalog via API and drive frontend permissions dynamically from server-provided capabilities.
+21. Roles/accounts governance phase 6 is complete (backend capabilities endpoint + server-driven frontend permission checks).
+22. Next value is role governance phase 7: replace remaining frontend static role assumptions with capability-aware page navigation and action discovery UX.
 
 ## Suggested Next Task
 
-1. Implement roles/accounts phase 6: add server-driven permission capability payload and consume it in frontend for dynamic access control.
+1. Implement roles/accounts phase 7: add capability-aware navigation and context tooltips so users see clear “why this is hidden/disabled” guidance.
