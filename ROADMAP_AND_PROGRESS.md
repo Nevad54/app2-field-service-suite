@@ -233,11 +233,25 @@ Date: 2026-03-06
    - Added regression coverage:
      - manager can update dispatch settings
      - manager is still forbidden to delete quotes
+11. Roles/accounts governance (phase 3):
+   - Completed permission middleware migration for mutating backend endpoints:
+     - replaced route-level `requireRoles(...)` guards with permission flags (`requirePermission(...)`)
+     - covered core CRUD operations across customers, jobs, projects, tasks, technicians, inventory, equipment, quotes, recurring, invoices
+   - Added account-admin lifecycle APIs (admin-only):
+     - `GET /api/users`
+     - `PATCH /api/users/:id/account-status`
+   - Added enforced lifecycle state at request time:
+     - non-active staff accounts (`disabled`, `locked`, `invited`) now invalidate active sessions and are blocked by `requireAuth`
+   - Added session revocation on account-status changes to prevent stale elevated sessions after lock/disable.
+   - Expanded regression coverage:
+     - manager is forbidden from account-admin APIs
+     - admin can disable/reactivate technician account
+     - disabled technician cannot authenticate
 
 ## Validation Status
 
 1. Frontend build passes (2026-03-06) after Sprint 5 phase-2 accessibility work.
-2. Backend API regression tests pass (`16/16`, 2026-03-06) after roles/accounts governance phase 2.
+2. Backend API regression tests pass (`17/17`, 2026-03-06) after roles/accounts governance phase 3.
 3. Runtime startup check passes with healthy ports and route validation (`start-app.ps1`, 2026-03-06):
    - `GET /api/status` responds
    - `GET /api/settings/dispatch` responds after auth
@@ -265,8 +279,9 @@ Date: 2026-03-06
 14. Sprint 5 sustained quality follow-up now includes outage/latency E2E simulation coverage and flaky trend reporting.
 15. Sprint 5 sustained quality follow-up now includes roles/accounts hardening phase 1 (staff/client auth split + account status + password hashing upgrade path).
 16. Roles/accounts governance phase 2 is complete (`manager` role + permission middleware on sensitive operations).
-17. Next value is role governance phase 3: extend permission middleware coverage across all mutating endpoints and add account-admin APIs for `account_status` lifecycle.
+17. Roles/accounts governance phase 3 is complete (full mutating-route permission migration + account lifecycle APIs + session invalidation for non-active accounts).
+18. Next value is role governance phase 4: add frontend admin account-management UI and per-action permission mapping in frontend route/component gates.
 
 ## Suggested Next Task
 
-1. Implement roles/accounts phase 3: complete permission middleware migration for all mutating endpoints and add account-admin lifecycle APIs (`disable`, `lock`, `invite`, `reactivate`).
+1. Implement roles/accounts phase 4: add admin user-management UI for account lifecycle actions and align frontend visibility logic to backend permission flags.

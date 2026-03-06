@@ -461,10 +461,19 @@ const getBearerToken = (req) => {
     return raw.slice(7).trim();
 };
 
-const requireAuth = (req, res, next) => {
+const requireAuth = async (req, res, next) => {
     const token = getBearerToken(req);
     const session = sessions.get(token);
     if (!token || !session) return res.status(401).json({ error: 'Unauthorized' });
+    const role = String(session.user?.role || '').toLowerCase();
+    if (role !== 'client') {
+        const activeUser = memoryCache.users.find((item) => item.id === session.user?.id || item.username === session.user?.username);
+        if (!activeUser || normalizeAccountStatus(activeUser.account_status) !== 'active') {
+            sessions.delete(token);
+            await dbInstance.deleteSession(token);
+            return res.status(401).json({ error: 'Session expired' });
+        }
+    }
     req.authUser = session.user;
     req.authToken = token;
     return next();
@@ -925,6 +934,60 @@ const startServer = async () => {
         res.json({ ok: true });
     });
 
+    const revokeSessionsForUser = async (userId, username) => {
+        const toRevoke = [];
+        for (const [token, session] of sessions.entries()) {
+            if (!session?.user) continue;
+            if ((userId && session.user.id === userId) || (username && session.user.username === username)) {
+                toRevoke.push(token);
+            }
+        }
+        for (const token of toRevoke) {
+            sessions.delete(token);
+            await dbInstance.deleteSession(token);
+        }
+    };
+
+    app.get('/api/users', requireAuth, requirePermission('accounts.manage'), (req, res) => {
+        const users = memoryCache.users.map((user) => ({
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            account_status: normalizeAccountStatus(user.account_status),
+            created_at: user.created_at || null,
+            updated_at: user.updated_at || null,
+        }));
+        res.json(users);
+    });
+
+    app.patch('/api/users/:id/account-status', requireAuth, requirePermission('accounts.manage'), async (req, res) => {
+        const index = memoryCache.users.findIndex((item) => item.id === req.params.id);
+        if (index === -1) return res.status(404).json({ error: 'User not found' });
+
+        const status = normalizeAccountStatus(req.body?.status);
+        const allowedStatuses = new Set(['active', 'disabled', 'locked', 'invited']);
+        if (!allowedStatuses.has(status)) return res.status(400).json({ error: 'Invalid status' });
+
+        const existing = { ...memoryCache.users[index] };
+        if (existing.id === req.authUser.id && status !== 'active') {
+            return res.status(400).json({ error: 'You cannot deactivate your own account' });
+        }
+
+        existing.account_status = status;
+        existing.updated_at = new Date().toISOString();
+        memoryCache.users[index] = existing;
+        await dbInstance.persistUser(existing);
+        await revokeSessionsForUser(existing.id, existing.username);
+        await logActivity('user', existing.id, req.authUser.username, 'account_status_changed', `Set ${existing.username} account status to ${status}`);
+        res.json({
+            id: existing.id,
+            username: existing.username,
+            role: existing.role,
+            account_status: status,
+            updated_at: existing.updated_at,
+        });
+    });
+
     app.post('/api/client/login', async (req, res) => {
         const email = String(req.body.email || '').trim().toLowerCase();
         const customer = memoryCache.customers.find(c => c.email.toLowerCase() === email);
@@ -957,7 +1020,7 @@ const startServer = async () => {
         res.json(memoryCache.customers);
     });
 
-    app.post('/api/customers', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/customers', requireAuth, requirePermission('customers.manage'), async (req, res) => {
         const { name, email, phone, address } = req.body;
         if (!name) return res.status(400).json({ error: 'Customer name is required' });
 
@@ -977,7 +1040,7 @@ const startServer = async () => {
         res.status(201).json(newCustomer);
     });
 
-    app.put('/api/customers/:id', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/customers/:id', requireAuth, requirePermission('customers.manage'), async (req, res) => {
         const index = memoryCache.customers.findIndex(c => c.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Customer not found' });
 
@@ -996,7 +1059,7 @@ const startServer = async () => {
         res.json(customer);
     });
 
-    app.delete('/api/customers/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+    app.delete('/api/customers/:id', requireAuth, requirePermission('customers.delete.any'), async (req, res) => {
         const index = memoryCache.customers.findIndex(c => c.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Customer not found' });
 
@@ -1031,7 +1094,7 @@ const startServer = async () => {
         return `JOB-${String(max + 1).padStart(4, '0')}`;
     };
 
-    app.post('/api/jobs', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/jobs', requireAuth, requirePermission('jobs.manage'), async (req, res) => {
         const { title, priority, assignedTo, location, customerId, scheduledDate, category, notes, projectId, taskId } = req.body;
         if (!title) return res.status(400).json({ error: 'Job title is required' });
 
@@ -1065,7 +1128,7 @@ const startServer = async () => {
         return res.status(201).json(created);
     });
 
-    app.put('/api/jobs/:id', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/jobs/:id', requireAuth, requirePermission('jobs.manage'), async (req, res) => {
         const index = memoryCache.jobs.findIndex(j => j.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Job not found' });
 
@@ -1117,7 +1180,7 @@ const startServer = async () => {
 
         if (req.authUser.role === 'technician') {
             if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
-        } else if (!['admin', 'manager', 'dispatcher'].includes(req.authUser.role)) {
+        } else if (!hasPermission(req.authUser, 'jobs.manage')) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -1143,7 +1206,7 @@ const startServer = async () => {
 
         if (req.authUser.role === 'technician') {
             if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
-        } else if (!['admin', 'manager', 'dispatcher'].includes(req.authUser.role)) {
+        } else if (!hasPermission(req.authUser, 'jobs.manage')) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -1172,7 +1235,7 @@ const startServer = async () => {
 
         if (req.authUser.role === 'technician') {
             if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
-        } else if (!['admin', 'manager', 'dispatcher'].includes(req.authUser.role)) {
+        } else if (!hasPermission(req.authUser, 'jobs.manage')) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -1202,8 +1265,8 @@ const startServer = async () => {
         const existing = { ...memoryCache.jobs[index] };
 
         const isTechAssigned = req.authUser.role === 'technician' && existing.assignedTo === req.authUser.username;
-        const isManager = ['admin', 'manager', 'dispatcher'].includes(req.authUser.role);
-        if (!isTechAssigned && !isManager) return res.status(403).json({ error: 'Forbidden' });
+        const canManageJob = hasPermission(req.authUser, 'jobs.manage');
+        if (!isTechAssigned && !canManageJob) return res.status(403).json({ error: 'Forbidden' });
 
         const asList = (value) => (Array.isArray(value) ? value : []);
         const { technicianNotes, partsUsed, materialsUsed } = req.body || {};
@@ -1377,7 +1440,7 @@ const startServer = async () => {
         });
     });
 
-    app.delete('/api/jobs/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+    app.delete('/api/jobs/:id', requireAuth, requirePermission('jobs.delete.any'), async (req, res) => {
         const index = memoryCache.jobs.findIndex(j => j.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Job not found' });
 
@@ -1396,7 +1459,7 @@ const startServer = async () => {
 
         if (req.authUser.role === 'technician') {
             if (existing.assignedTo !== req.authUser.username) return res.status(403).json({ error: 'Forbidden' });
-        } else if (!['admin', 'manager', 'dispatcher'].includes(req.authUser.role)) {
+        } else if (!hasPermission(req.authUser, 'jobs.manage')) {
             return res.status(403).json({ error: 'Forbidden' });
         }
 
@@ -1457,7 +1520,7 @@ const startServer = async () => {
         if (index === -1) return res.status(404).json({ error: 'Job not found' });
         const existing = memoryCache.jobs[index];
 
-        if (!['admin', 'manager', 'dispatcher'].includes(req.authUser.role)) {
+        if (!hasPermission(req.authUser, 'jobs.manage')) {
             return res.status(403).json({ error: 'Forbidden' });
         }
         if (!Array.isArray(existing.photos) || existing.photos.length === 0) {
@@ -1498,7 +1561,7 @@ const startServer = async () => {
     // ============== PROJECTS AND PLANNER ==============
     app.get('/api/projects', requireAuth, (req, res) => res.json(memoryCache.projects));
 
-    app.post('/api/projects', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/projects', requireAuth, requirePermission('projects.manage'), async (req, res) => {
         const { title, description, start_date, end_date } = req.body;
         if (!title) return res.status(400).json({ error: 'Project title is required' });
 
@@ -1521,7 +1584,7 @@ const startServer = async () => {
         res.status(201).json(newProject);
     });
 
-    app.delete('/api/projects/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+    app.delete('/api/projects/:id', requireAuth, requirePermission('projects.delete.any'), async (req, res) => {
         const index = memoryCache.projects.findIndex(p => p.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Project not found' });
         
@@ -1545,7 +1608,7 @@ const startServer = async () => {
     });
 
     // Backward-compatible endpoint used by ProjectsPage modal task form
-    app.post('/api/projects/:id/tasks', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/projects/:id/tasks', requireAuth, requirePermission('tasks.manage'), async (req, res) => {
         const project = memoryCache.projects.find(p => p.id === req.params.id);
         if (!project) return res.status(404).json({ error: 'Project not found' });
 
@@ -1641,7 +1704,7 @@ const startServer = async () => {
         res.json(task);
     });
 
-    app.put('/api/tasks/:id', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/tasks/:id', requireAuth, requirePermission('tasks.manage'), async (req, res) => {
         const index = memoryCache.tasks.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Task not found' });
         
@@ -1651,7 +1714,7 @@ const startServer = async () => {
         res.json(task);
     });
 
-    app.delete('/api/tasks/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+    app.delete('/api/tasks/:id', requireAuth, requirePermission('tasks.delete.any'), async (req, res) => {
         const index = memoryCache.tasks.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Task not found' });
         
@@ -1660,7 +1723,7 @@ const startServer = async () => {
         res.json({ ok: true });
     });
 
-    app.put('/api/tasks/:id/progress', requireAuth, async (req, res) => {
+    app.put('/api/tasks/:id/progress', requireAuth, requirePermission('tasks.manage'), async (req, res) => {
         const index = memoryCache.tasks.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Task not found' });
         
@@ -1679,7 +1742,7 @@ const startServer = async () => {
     });
 
     // PATCH endpoint for task progress (used by frontend slider)
-    app.patch('/api/tasks/:id/progress', requireAuth, async (req, res) => {
+    app.patch('/api/tasks/:id/progress', requireAuth, requirePermission('tasks.manage'), async (req, res) => {
         const index = memoryCache.tasks.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Task not found' });
         
@@ -1698,7 +1761,7 @@ const startServer = async () => {
         res.json(task);
     });
 
-    app.put('/api/tasks/:id/dates', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/tasks/:id/dates', requireAuth, requirePermission('tasks.manage'), async (req, res) => {
         const index = memoryCache.tasks.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Task not found' });
         
@@ -1716,7 +1779,7 @@ const startServer = async () => {
     });
 
     // PATCH endpoint for task dates (used by frontend table) - any authenticated user
-    app.patch('/api/tasks/:id/dates', requireAuth, async (req, res) => {
+    app.patch('/api/tasks/:id/dates', requireAuth, requirePermission('tasks.manage'), async (req, res) => {
         const index = memoryCache.tasks.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Task not found' });
         
@@ -1743,7 +1806,7 @@ const startServer = async () => {
         res.json(task);
     });
 
-    app.post('/api/tasks', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/tasks', requireAuth, requirePermission('tasks.manage'), async (req, res) => {
         const { project_id, parent_task_id, name, start_date, end_date, progress_percent, weight, notes, sort_order } = req.body;
         if (!project_id || !name) return res.status(400).json({ error: 'Project ID and task name are required' });
 
@@ -1786,7 +1849,7 @@ const startServer = async () => {
         res.json(userNotifications);
     });
 
-    app.post('/api/notifications', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/notifications', requireAuth, requirePermission('notifications.manage'), async (req, res) => {
         const notification = {
             id: `notif-${Date.now()}`,
             user_id: req.body.user_id || 'all',
@@ -1875,7 +1938,7 @@ const startServer = async () => {
     });
 
     // Create technician
-    app.post('/api/technicians', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/technicians', requireAuth, requirePermission('technicians.manage'), async (req, res) => {
         const { name, email, phone, skills, hourly_rate, certifications, availability, status, color, hire_date, notes } = req.body;
         if (!name) return res.status(400).json({ error: 'Technician name is required' });
 
@@ -1911,7 +1974,7 @@ const startServer = async () => {
     });
 
     // Update technician
-    app.put('/api/technicians/:id', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/technicians/:id', requireAuth, requirePermission('technicians.manage'), async (req, res) => {
         const index = memoryCache.technicians.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Technician not found' });
 
@@ -1937,7 +2000,7 @@ const startServer = async () => {
     });
 
     // Delete technician
-    app.delete('/api/technicians/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+    app.delete('/api/technicians/:id', requireAuth, requirePermission('technicians.delete.any'), async (req, res) => {
         const index = memoryCache.technicians.findIndex(t => t.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Technician not found' });
 
@@ -2013,7 +2076,7 @@ const startServer = async () => {
         res.json(memoryCache.inventory);
     });
 
-    app.post('/api/inventory', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/inventory', requireAuth, requirePermission('inventory.manage'), async (req, res) => {
         const { name, sku, category, quantity, unit_price, reorder_level, location, supplier } = req.body;
         if (!name) return res.status(400).json({ error: 'Item name is required' });
 
@@ -2035,7 +2098,7 @@ const startServer = async () => {
         res.status(201).json(newItem);
     });
 
-    app.put('/api/inventory/:id', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/inventory/:id', requireAuth, requirePermission('inventory.manage'), async (req, res) => {
         const index = memoryCache.inventory.findIndex(i => i.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Item not found' });
 
@@ -2045,7 +2108,7 @@ const startServer = async () => {
         res.json(item);
     });
 
-    app.delete('/api/inventory/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+    app.delete('/api/inventory/:id', requireAuth, requirePermission('inventory.delete.any'), async (req, res) => {
         const index = memoryCache.inventory.findIndex(i => i.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Item not found' });
 
@@ -2060,7 +2123,7 @@ const startServer = async () => {
         res.json(memoryCache.equipment);
     });
 
-    app.post('/api/equipment', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/equipment', requireAuth, requirePermission('equipment.manage'), async (req, res) => {
         const { name, type, customerId, location, serial_number, install_date, status, notes } = req.body;
         if (!name) return res.status(400).json({ error: 'Equipment name is required' });
 
@@ -2082,7 +2145,7 @@ const startServer = async () => {
         res.status(201).json(newEquipment);
     });
 
-    app.put('/api/equipment/:id', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/equipment/:id', requireAuth, requirePermission('equipment.manage'), async (req, res) => {
         const index = memoryCache.equipment.findIndex(e => e.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Equipment not found' });
 
@@ -2092,7 +2155,7 @@ const startServer = async () => {
         res.json(item);
     });
 
-    app.delete('/api/equipment/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+    app.delete('/api/equipment/:id', requireAuth, requirePermission('equipment.delete.any'), async (req, res) => {
         const index = memoryCache.equipment.findIndex(e => e.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Equipment not found' });
 
@@ -2107,7 +2170,7 @@ const startServer = async () => {
         res.json(memoryCache.quotes);
     });
 
-    app.post('/api/quotes', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/quotes', requireAuth, requirePermission('quotes.manage'), async (req, res) => {
         const { customerId, title, description, total_amount, valid_until, items } = req.body;
         if (!title) return res.status(400).json({ error: 'Quote title is required' });
 
@@ -2129,7 +2192,7 @@ const startServer = async () => {
         res.status(201).json(newQuote);
     });
 
-    app.put('/api/quotes/:id', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/quotes/:id', requireAuth, requirePermission('quotes.manage'), async (req, res) => {
         const index = memoryCache.quotes.findIndex(q => q.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Quote not found' });
 
@@ -2182,7 +2245,7 @@ const startServer = async () => {
     });
 
     // Convert quote to job
-    app.post('/api/quotes/:id/convert', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/quotes/:id/convert', requireAuth, requirePermission('quotes.manage'), async (req, res) => {
         const index = memoryCache.quotes.findIndex(q => q.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Quote not found' });
 
@@ -2247,7 +2310,7 @@ const startServer = async () => {
         return res.json(recurring);
     });
 
-    app.post('/api/recurring', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/recurring', requireAuth, requirePermission('recurring.manage'), async (req, res) => {
         const { customerId, title, description, frequency, interval_value, interval_unit, start_date, end_date, assignedTo, category, priority, estimated_duration_hours } = req.body || {};
         if (!customerId || !title || !frequency) {
             return res.status(400).json({ error: 'Customer ID, title, and frequency are required' });
@@ -2278,7 +2341,7 @@ const startServer = async () => {
         return res.status(201).json(newRecurring);
     });
 
-    app.put('/api/recurring/:id', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.put('/api/recurring/:id', requireAuth, requirePermission('recurring.manage'), async (req, res) => {
         const index = memoryCache.recurring.findIndex((item) => item.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Recurring job not found' });
 
@@ -2304,7 +2367,7 @@ const startServer = async () => {
         return res.json(existing);
     });
 
-    app.delete('/api/recurring/:id', requireAuth, requireRoles(['admin']), async (req, res) => {
+    app.delete('/api/recurring/:id', requireAuth, requirePermission('recurring.delete.any'), async (req, res) => {
         const index = memoryCache.recurring.findIndex((item) => item.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Recurring job not found' });
 
@@ -2320,7 +2383,7 @@ const startServer = async () => {
         res.json(memoryCache.invoices);
     });
 
-    app.post('/api/invoices', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.post('/api/invoices', requireAuth, requirePermission('invoices.manage'), async (req, res) => {
         const { jobId, customerId, amount, description } = req.body;
         if (!amount) return res.status(400).json({ error: 'Amount is required' });
 
@@ -2339,7 +2402,7 @@ const startServer = async () => {
         res.status(201).json(newInvoice);
     });
 
-    app.patch('/api/invoices/:id/status', requireAuth, requireRoles(['admin', 'manager', 'dispatcher']), async (req, res) => {
+    app.patch('/api/invoices/:id/status', requireAuth, requirePermission('invoices.manage'), async (req, res) => {
         const index = memoryCache.invoices.findIndex(i => i.id === req.params.id);
         if (index === -1) return res.status(404).json({ error: 'Invoice not found' });
 

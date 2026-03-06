@@ -655,6 +655,39 @@ test('Manager role can manage dispatch settings but cannot delete quote', async 
   assert.equal(deleteAsManager.status, 403, 'Manager should not be allowed to delete quotes');
 });
 
+test('Account lifecycle admin APIs work and enforce role boundaries', async () => {
+  const usersAsManager = await api('/api/users', { token: managerToken });
+  assert.equal(usersAsManager.status, 403, 'Manager should not be allowed to manage accounts');
+
+  const usersAsAdmin = await api('/api/users', { token: adminToken });
+  assert.equal(usersAsAdmin.status, 200, 'Admin should list user accounts');
+  assert.ok(Array.isArray(usersAsAdmin.payload), 'Users payload should be array');
+  const technicianUser = usersAsAdmin.payload.find((entry) => entry.username === 'technician');
+  assert.ok(technicianUser, 'Technician user should exist');
+
+  const disableTech = await api(`/api/users/${encodeURIComponent(technicianUser.id)}/account-status`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { status: 'disabled' },
+  });
+  assert.equal(disableTech.status, 200, 'Admin should disable technician account');
+  assert.equal(disableTech.payload.account_status, 'disabled');
+
+  const disabledLogin = await api('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'technician', password: '1111' },
+  });
+  assert.equal(disabledLogin.status, 403, 'Disabled user should not be able to login');
+
+  const reactivateTech = await api(`/api/users/${encodeURIComponent(technicianUser.id)}/account-status`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { status: 'active' },
+  });
+  assert.equal(reactivateTech.status, 200, 'Admin should reactivate technician account');
+  assert.equal(reactivateTech.payload.account_status, 'active');
+});
+
 test('Dashboard KPI endpoint returns SLA and operational metrics', async () => {
   const kpis = await api('/api/dashboard/kpis', { token: adminToken });
   assert.equal(kpis.status, 200, 'Dashboard KPI endpoint should succeed');
