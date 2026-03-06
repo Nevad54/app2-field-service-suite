@@ -3189,17 +3189,18 @@ function ActivityPage({ token, user }) {
   }, [canViewActivity, token]);
 
   const getActivityIcon = (action) => {
-    if (action.includes('login')) return '??';
-    if (action.includes('logout')) return '??';
-    if (action.includes('created')) return '?';
-    if (action.includes('updated')) return '??';
-    if (action.includes('deleted')) return '???';
-    if (action.includes('checkin')) return '??';
-    if (action.includes('checkout')) return '?';
-    if (action.includes('invoice')) return '??';
-    if (action.includes('account_status')) return '???';
-    if (action.includes('status')) return '??';
-    return '??';
+    const normalized = String(action || '').toLowerCase();
+    if (normalized.includes('login')) return 'LOG';
+    if (normalized.includes('logout')) return 'OUT';
+    if (normalized.includes('created')) return 'ADD';
+    if (normalized.includes('updated')) return 'EDT';
+    if (normalized.includes('deleted')) return 'DEL';
+    if (normalized.includes('checkin')) return 'IN';
+    if (normalized.includes('checkout')) return 'DONE';
+    if (normalized.includes('invoice')) return 'INV';
+    if (normalized.includes('account_status')) return 'ACC';
+    if (normalized.includes('status')) return 'STS';
+    return 'ACT';
   };
 
   const filteredActivities = useMemo(() => {
@@ -3216,7 +3217,7 @@ function ActivityPage({ token, user }) {
   if (!canViewActivity) {
     return (
       <section className="card">
-        <h1>?? Activity Log</h1>
+        <h1>Activity Log</h1>
         <p className="empty-state">You do not have access to activity history.</p>
       </section>
     );
@@ -3225,7 +3226,7 @@ function ActivityPage({ token, user }) {
   return (
     <section className="card">
       <div className="page-header">
-        <h1>?? Activity Log</h1>
+        <h1>Activity Log</h1>
         <div className="filter-buttons">
           <button className={`filter-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>All</button>
           <button className={`filter-btn ${filter === 'job' ? 'active' : ''}`} onClick={() => setFilter('job')}>Jobs</button>

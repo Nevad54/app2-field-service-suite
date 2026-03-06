@@ -178,12 +178,8 @@ export default function TeamPage({ token }) {
   };
 
   const getStatusBadge = (status) => {
-    switch (status) {
-      case 'active': return <span className="status-badge status-active">Active</span>;
-      case 'on_leave': return <span className="status-badge status-on-leave">On Leave</span>;
-      case 'unavailable': return <span className="status-badge status-unavailable">Unavailable</span>;
-      default: return null;
-    }
+    const normalized = normalizeTechnicianStatus(status);
+    return <span className={`status-badge ${normalized}`}>{formatTechnicianStatus(normalized)}</span>;
   };
 
   const getWorkloadColor = (percent) => {
@@ -192,8 +188,9 @@ export default function TeamPage({ token }) {
     return '#ef4444';
   };
 
-  const activeCount = technicians.filter(t => t.status === 'active').length;
-  const onLeaveCount = technicians.filter(t => t.status === 'on_leave').length;
+  const activeCount = technicians.filter((t) => normalizeTechnicianStatus(t.status) === 'active').length;
+  const onLeaveCount = technicians.filter((t) => normalizeTechnicianStatus(t.status) === 'on_leave').length;
+  const unavailableCount = technicians.filter((t) => normalizeTechnicianStatus(t.status) === 'unavailable').length;
 
   return (
     <section className="card">
@@ -220,6 +217,10 @@ export default function TeamPage({ token }) {
           <div className="team-stat on-leave">
             <span className="team-stat-value">{onLeaveCount}</span>
             <span className="team-stat-label">On Leave</span>
+          </div>
+          <div className="team-stat unavailable">
+            <span className="team-stat-value">{unavailableCount}</span>
+            <span className="team-stat-label">Unavailable</span>
           </div>
         </div>
       )}
@@ -426,3 +427,15 @@ export default function TeamPage({ token }) {
     </section>
   );
 }
+  const normalizeTechnicianStatus = (status) => {
+    const value = String(status || '').trim().toLowerCase().replace('-', '_').replace(' ', '_');
+    if (value === 'active' || value === 'on_leave' || value === 'unavailable') return value;
+    return 'unknown';
+  };
+
+  const formatTechnicianStatus = (status) => {
+    if (status === 'on_leave') return 'On Leave';
+    if (status === 'unavailable') return 'Unavailable';
+    if (status === 'active') return 'Active';
+    return 'Unknown';
+  };

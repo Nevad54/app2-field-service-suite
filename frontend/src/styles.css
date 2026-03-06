@@ -317,6 +317,9 @@ textarea:focus-visible {
 .status-badge.disabled { background: var(--danger-light); color: var(--danger); }
 .status-badge.locked { background: var(--warning-light); color: var(--warning); }
 .status-badge.invited { background: var(--bg-tertiary); color: var(--text-secondary); }
+.status-badge.on_leave { background: var(--warning-light); color: var(--warning); }
+.status-badge.unavailable { background: var(--danger-light); color: var(--danger); }
+.status-badge.unknown { background: var(--bg-tertiary); color: var(--text-secondary); }
 
 /* Tables */
 .table-container { overflow-x: auto; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-secondary); }
@@ -770,7 +773,7 @@ textarea:focus-visible {
 .activity-feed { display: flex; flex-direction: column; gap: 12px; }
 .activity-entry { display: flex; gap: 12px; padding: 16px; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .activity-entry:hover { background: var(--bg-tertiary); border-color: var(--accent); }
-.activity-icon { font-size: 1.5rem; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); border-radius: var(--radius-sm); flex-shrink: 0; }
+.activity-icon { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.02em; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: var(--bg-tertiary); border-radius: var(--radius-sm); flex-shrink: 0; color: var(--text-secondary); }
 .activity-content { flex: 1; }
 .activity-description { color: var(--text-primary); margin-bottom: 4px; }
 .activity-meta { font-size: 0.85rem; color: var(--text-muted); }
@@ -991,6 +994,9 @@ textarea:focus-visible {
 .team-stat { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 24px; display: flex; flex-direction: column; align-items: center; min-width: 100px; }
 .team-stat-value { font-size: 1.5rem; font-weight: 600; color: var(--text-primary); line-height: 1; }
 .team-stat-label { color: var(--text-muted); font-size: 0.8rem; margin-top: 4px; }
+.team-stat.active { border-left: 4px solid var(--success); }
+.team-stat.on-leave { border-left: 4px solid var(--warning); }
+.team-stat.unavailable { border-left: 4px solid var(--danger); }
 
 .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 .team-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
