@@ -8,6 +8,7 @@ const SERVER_BOOT_TIMEOUT_MS = 30000;
 
 let serverProcess = null;
 let adminToken = '';
+let managerToken = '';
 let clientToken = '';
 let createdProjectId = '';
 let createdNotificationId = '';
@@ -77,6 +78,14 @@ test.before(async () => {
   assert.equal(clientLogin.status, 200, 'Client login should succeed');
   assert.ok(clientLogin.payload.token, 'Client token should be returned');
   clientToken = clientLogin.payload.token;
+
+  const managerLogin = await api('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'manager', password: '1111' },
+  });
+  assert.equal(managerLogin.status, 200, 'Manager login should succeed');
+  assert.ok(managerLogin.payload.token, 'Manager token should be returned');
+  managerToken = managerLogin.payload.token;
 
   const customers = await api('/api/customers', { token: adminToken });
   assert.equal(customers.status, 200, 'Customers fetch should succeed in setup');
@@ -612,6 +621,38 @@ test('Dispatch settings GET + PUT works', async () => {
   assert.equal(update.status, 200, 'Dispatch settings PUT should succeed');
   assert.equal(update.payload.maxJobsPerTechnicianPerDay, 3);
   assert.equal(update.payload.slaDueSoonDays, 2);
+});
+
+test('Manager role can manage dispatch settings but cannot delete quote', async () => {
+  const settingsUpdate = await api('/api/settings/dispatch', {
+    method: 'PUT',
+    token: managerToken,
+    body: {
+      maxJobsPerTechnicianPerDay: 4,
+      slaDueSoonDays: 3,
+    },
+  });
+  assert.equal(settingsUpdate.status, 200, 'Manager should be allowed to manage dispatch settings');
+  assert.equal(settingsUpdate.payload.maxJobsPerTechnicianPerDay, 4);
+  assert.equal(settingsUpdate.payload.slaDueSoonDays, 3);
+
+  const quote = await api('/api/quotes', {
+    method: 'POST',
+    token: adminToken,
+    body: {
+      customerId: defaultCustomerId,
+      title: `Manager Delete Guardrail ${Date.now()}`,
+      description: 'Manager delete guardrail test',
+      items: [{ description: 'Service line', quantity: 1, unit_price: 80 }],
+    },
+  });
+  assert.equal(quote.status, 201, 'Quote creation should succeed');
+
+  const deleteAsManager = await api(`/api/quotes/${encodeURIComponent(quote.payload.id)}`, {
+    method: 'DELETE',
+    token: managerToken,
+  });
+  assert.equal(deleteAsManager.status, 403, 'Manager should not be allowed to delete quotes');
 });
 
 test('Dashboard KPI endpoint returns SLA and operational metrics', async () => {

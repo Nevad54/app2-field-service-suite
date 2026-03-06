@@ -168,15 +168,16 @@ function LoginPage({ onLogin, isLoggedIn }) {
           </button>
         </form>
         
-        <div className="demo-accounts">
-          <p className="demo-title">Demo Accounts:</p>
-          <div className="demo-grid">
-            <span className="demo-role admin">admin / 1111</span>
-            <span className="demo-role dispatcher">dispatcher / 1111</span>
-            <span className="demo-role technician">technician / 1111</span>
-            <span className="demo-role client">client / 1111</span>
+          <div className="demo-accounts">
+            <p className="demo-title">Demo Accounts:</p>
+            <div className="demo-grid">
+              <span className="demo-role admin">admin / 1111</span>
+              <span className="demo-role dispatcher">manager / 1111</span>
+              <span className="demo-role dispatcher">dispatcher / 1111</span>
+              <span className="demo-role technician">technician / 1111</span>
+              <span className="demo-role client">client / 1111</span>
+            </div>
           </div>
-        </div>
         
         <div className="client-portal-link">
           <p>Are you a customer? <Link to="/client-login">Login to Client Portal</Link></p>
@@ -1090,7 +1091,7 @@ function SchedulePage({ token, user }) {
   const [optimization, setOptimization] = useState(null);
   const [loadingOptimization, setLoadingOptimization] = useState(false);
   const [applyingOptimizationId, setApplyingOptimizationId] = useState('');
-  const canEditDispatchSettings = user?.role === 'admin' || user?.role === 'dispatcher';
+  const canEditDispatchSettings = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'dispatcher';
 
   const fetchSchedule = useCallback(async () => {
     setLoading(true);
@@ -1504,7 +1505,7 @@ function JobsPage({ token, user }) {
     evidenceSummary: '',
     customerAccepted: false,
   });
-  const canManageJobs = user.role === 'admin' || user.role === 'dispatcher';
+  const canManageJobs = user.role === 'admin' || user.role === 'manager' || user.role === 'dispatcher';
   const isTechnician = user.role === 'technician';
   const canEditWorklog = canManageJobs || isTechnician;
 
@@ -3364,7 +3365,7 @@ export default function App() {
     persistClientAuth(null);
   }, [persistClientAuth]);
 
-  const canManageCustomers = auth?.user?.role === 'admin' || auth?.user?.role === 'dispatcher';
+  const canManageCustomers = auth?.user?.role === 'admin' || auth?.user?.role === 'manager' || auth?.user?.role === 'dispatcher';
   const unreadCount = notifications.filter(n => !n.read).length;
 
     const navLinks = useMemo(() => (
