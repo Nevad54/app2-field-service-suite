@@ -2489,22 +2489,22 @@ function JobsPage({ token, user }) {
                           onChange={(e) => updateReservationDraft(job.id, 'quantity', e.target.value)}
                           disabled={workingId === job.id}
                         />
-                        <button
-                          type="button"
-                          className="btn-secondary btn-small"
-                          onClick={() => handleReserveInventory(job.id)}
-                          disabled={workingId === job.id}
-                        >
-                          Reserve
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          onClick={() => loadInventoryIntelligence(job.id)}
-                          disabled={workingId === job.id}
-                          aria-label={`Refresh inventory intelligence for ${job.id}`}
-                        >
-                          Refresh
+                          <button
+                            type="button"
+                            className="btn-primary btn-small photo-add-btn"
+                            onClick={() => handleReserveInventory(job.id)}
+                            disabled={workingId === job.id}
+                          >
+                            Reserve
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary btn-small photo-add-btn"
+                            onClick={() => loadInventoryIntelligence(job.id)}
+                            disabled={workingId === job.id}
+                            aria-label={`Refresh inventory intelligence for ${job.id}`}
+                          >
+                            Refresh
                         </button>
                       </div>
                       {inventoryIntelByJob[job.id]?.summary ? (
@@ -2680,13 +2680,13 @@ function JobsPage({ token, user }) {
                             onChange={(e) => updateCustomerUpdateDraft(job.id, 'customMessage', e.target.value)}
                             disabled={workingId === job.id}
                           />
-                          <button
-                            type="button"
-                            className="btn-secondary photo-add-btn"
-                            onClick={() => handleSendCustomerUpdate(job)}
-                            disabled={workingId === job.id}
-                          >
-                            Send Update
+                            <button
+                              type="button"
+                              className="btn-primary photo-add-btn"
+                              onClick={() => handleSendCustomerUpdate(job)}
+                              disabled={workingId === job.id}
+                            >
+                              Send Update
                           </button>
                         </div>
                       </div>

@@ -512,6 +512,7 @@ textarea:focus-visible {
 }
 .photo-upload-hint { font-size: 0.75rem; color: var(--text-muted); }
 .photo-add-btn { min-width: 140px; }
+.photo-upload-row .photo-add-btn { justify-content: center; }
 .checkbox-inline { display: inline-flex; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--text-secondary); font-weight: 500; }
 .tech-quick-panel {
   margin-bottom: 14px;
