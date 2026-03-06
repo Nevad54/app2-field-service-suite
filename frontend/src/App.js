@@ -3568,7 +3568,6 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => loadStoredDarkMode());
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
-  const [showToolsDropdown, setShowToolsDropdown] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isAuthed = Boolean(auth && auth.token && auth.user);
   const isClientAuthed = Boolean(clientAuth && clientAuth.token && clientAuth.user);
@@ -3675,38 +3674,63 @@ export default function App() {
   const canViewExports = hasFrontendPermission(auth?.user, 'exports.view');
   const unreadCount = notifications.filter(n => !n.read).length;
 
-    const navLinks = useMemo(() => (
-    <>
-      <NavLink to="/" end onClick={() => setMobileNavOpen(false)}>Home</NavLink>
-      {isAuthed ? <NavLink to="/dashboard" onClick={() => setMobileNavOpen(false)}>Dashboard</NavLink> : null}
-      {isAuthed ? <NavLink to="/jobs" onClick={() => setMobileNavOpen(false)}>Jobs</NavLink> : null}
-      {isAuthed ? <NavLink to="/schedule" onClick={() => setMobileNavOpen(false)}>Schedule</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/customers" onClick={() => setMobileNavOpen(false)}>Customers</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/invoices" onClick={() => setMobileNavOpen(false)}>Invoices</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/activity" onClick={() => setMobileNavOpen(false)}>Activity</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/projects" onClick={() => setMobileNavOpen(false)}>Projects</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/project-planner" onClick={() => setMobileNavOpen(false)}>Planner</NavLink> : null}
-      {isAuthed && canManageCustomers ? <NavLink to="/team" onClick={() => setMobileNavOpen(false)}>Team</NavLink> : null}
-      {isAuthed && canManageAccounts ? <NavLink to="/users" onClick={() => setMobileNavOpen(false)}>Users</NavLink> : null}
-      {isAuthed && canManageCustomers ? (
-        <div className="dropdown-container">
-          <button className="dropdown-toggle" onClick={() => setShowToolsDropdown(!showToolsDropdown)}>
-            Tools ▾
-          </button>
-          {showToolsDropdown && (
-            <div className="dropdown-menu">
-              <NavLink to="/inventory" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📦 Inventory</NavLink>
-              <NavLink to="/equipment" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>🔧 Equipment</NavLink>
-              <NavLink to="/quotes" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📝 Quotes</NavLink>
-              <NavLink to="/recurring" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>🔁 Recurring</NavLink>
-              {canViewExports ? <NavLink to="/export" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>Export</NavLink> : null}
-            </div>
-          )}
-        </div>
-      ) : null}
-      {!isAuthed ? <NavLink to="/login" onClick={() => setMobileNavOpen(false)}>Login</NavLink> : null}
-    </>
-  ), [isAuthed, canManageCustomers, canManageAccounts, canViewExports, showToolsDropdown]);
+  const navSections = useMemo(() => {
+    if (!isAuthed) {
+      return [
+        {
+          title: 'Access',
+          links: [
+            { to: '/', label: 'Home', end: true },
+            { to: '/login', label: 'Staff Login' },
+            { to: '/client-login', label: 'Client Portal' },
+          ],
+        },
+      ];
+    }
+
+    const sections = [
+      {
+        title: 'Main',
+        links: [
+          { to: '/dashboard', label: 'Dashboard' },
+          { to: '/jobs', label: 'Jobs' },
+          { to: '/schedule', label: 'Schedule' },
+        ],
+      },
+    ];
+
+    if (canManageCustomers) {
+      sections.push({
+        title: 'Operations',
+        links: [
+          { to: '/customers', label: 'Customers' },
+          { to: '/invoices', label: 'Invoices' },
+          { to: '/activity', label: 'Activity' },
+          { to: '/projects', label: 'Projects' },
+          { to: '/project-planner', label: 'Planner' },
+          { to: '/team', label: 'Team' },
+        ],
+      });
+
+      const toolsLinks = [
+        { to: '/inventory', label: 'Inventory' },
+        { to: '/equipment', label: 'Equipment' },
+        { to: '/quotes', label: 'Quotes' },
+        { to: '/recurring', label: 'Recurring' },
+      ];
+      if (canViewExports) toolsLinks.push({ to: '/export', label: 'Export' });
+      sections.push({ title: 'Tools', links: toolsLinks });
+    }
+
+    if (canManageAccounts) {
+      sections.push({
+        title: 'Admin',
+        links: [{ to: '/users', label: 'Users' }],
+      });
+    }
+
+    return sections;
+  }, [isAuthed, canManageCustomers, canManageAccounts, canViewExports]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -3718,18 +3742,6 @@ export default function App() {
       document.body.style.overflow = '';
     };
   }, [mobileNavOpen]);
-
-  // Close tools dropdown when clicking outside
-  useEffect(() => {
-    if (!showToolsDropdown) return;
-    const handleClickOutside = (e) => {
-      if (!e.target.closest('.dropdown-container')) {
-        setShowToolsDropdown(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showToolsDropdown]);
 
   return (
     <div className="app-shell">
@@ -3746,9 +3758,6 @@ export default function App() {
           </button>
           <Link to="/" className="brand">Field Service Suite</Link>
         </div>
-        <nav className="nav-links desktop-nav">
-          {navLinks}
-        </nav>
         <div className="user-section">
           {isAuthed && (
             <button 
@@ -3776,7 +3785,7 @@ export default function App() {
             <div className="user-menu">
               <span className="user-name">{auth.user.username}</span>
               {String(auth.user.role || '').toLowerCase() !== String(auth.user.username || '').toLowerCase() ? (
-                <span className="user-role">{auth.user.role}</span>
+                <span className="user-role">{formatRoleLabel(auth.user.role)}</span>
               ) : null}
               <button type="button" className="btn-secondary" onClick={logout}>
                 Logout
@@ -3785,6 +3794,24 @@ export default function App() {
           ) : null}
         </div>
       </header>
+
+      <div className="app-layout">
+      {isAuthed ? (
+        <aside className="side-nav desktop-only" aria-label="Primary navigation">
+          <nav className="side-nav-links">
+            {navSections.map((section) => (
+              <div key={section.title} className="side-nav-section">
+                <p className="side-nav-title">{section.title}</p>
+                {section.links.map((link) => (
+                  <NavLink key={link.to} to={link.to} end={Boolean(link.end)}>
+                    {link.label}
+                  </NavLink>
+                ))}
+              </div>
+            ))}
+          </nav>
+        </aside>
+      ) : null}
 
       <div
         className={`mobile-nav-overlay ${mobileNavOpen ? 'open' : ''}`}
@@ -3798,13 +3825,22 @@ export default function App() {
           </button>
         </div>
         <nav className="mobile-nav-links">
-          {navLinks}
+          {navSections.map((section) => (
+            <div key={section.title} className="mobile-nav-section">
+              <p className="mobile-nav-title">{section.title}</p>
+              {section.links.map((link) => (
+                <NavLink key={link.to} to={link.to} end={Boolean(link.end)} onClick={() => setMobileNavOpen(false)}>
+                  {link.label}
+                </NavLink>
+              ))}
+            </div>
+          ))}
         </nav>
         {isAuthed ? (
           <div className="mobile-nav-account">
             <div className="mobile-account-meta">
               <strong>{auth.user.username}</strong>
-              <span>{auth.user.role}</span>
+              <span>{formatRoleLabel(auth.user.role)}</span>
             </div>
             <button type="button" className="btn-secondary btn-full" onClick={() => { setMobileNavOpen(false); logout(); }}>
               Logout
@@ -3831,7 +3867,7 @@ export default function App() {
         </div>
       )}
 
-      <main className="main">
+      <main className={`main ${isAuthed ? 'main-with-sidebar' : ''}`}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage onLogin={login} isLoggedIn={isAuthed} />} />
@@ -3977,6 +4013,7 @@ export default function App() {
           />
         </Routes>
       </main>
+      </div>
     </div>
   );
 }

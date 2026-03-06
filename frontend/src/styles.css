@@ -59,12 +59,15 @@ body {
 
 .app-shell { min-height: 100vh; width: 100%; overflow-x: hidden; }
 .main { max-width: 1200px; margin: 0 auto; padding: 32px 20px; }
+.app-layout { display: flex; min-height: calc(100vh - 64px); }
+.main-with-sidebar { flex: 1; max-width: none; margin: 0; }
+.desktop-only { display: block; }
 
 /* Topbar */
 .topbar {
   position: sticky; top: 0; z-index: 100;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   padding: 12px 18px;
@@ -132,6 +135,25 @@ body {
 .user-menu { display: flex; align-items: center; gap: 10px; }
 .user-menu .btn-secondary { padding: 8px 12px; }
 
+/* Desktop side navigation */
+.side-nav {
+  width: 248px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 18px 12px;
+  position: sticky;
+  top: 64px;
+  align-self: flex-start;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+.side-nav-links { display: flex; flex-direction: column; gap: 14px; }
+.side-nav-section { display: flex; flex-direction: column; gap: 4px; }
+.side-nav-title { font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); padding: 0 10px; }
+.side-nav a { padding: 9px 10px; border-radius: var(--radius-sm); color: var(--text-secondary); text-decoration: none; font-weight: 600; font-size: 0.92rem; }
+.side-nav a:hover,
+.side-nav a.active { background: var(--accent-light); color: var(--accent); }
+
 .mobile-nav-overlay {
   position: fixed;
   inset: 0;
@@ -179,6 +201,8 @@ body {
   padding: 12px;
   overflow-y: auto;
 }
+.mobile-nav-section { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.mobile-nav-title { font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); padding: 2px 4px; }
 
 .mobile-nav-links a {
   padding: 10px 12px;
@@ -940,6 +964,7 @@ textarea:focus-visible {
 /* Responsive */
 
 @media (max-width: 1024px) {
+  .side-nav { width: 220px; }
   .main { padding: 20px 16px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .items-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
@@ -947,12 +972,13 @@ textarea:focus-visible {
 }
 
 @media (max-width: 768px) {
+  .app-layout { display: block; }
+  .desktop-only { display: none; }
   .topbar {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 10px;
     padding: 10px 12px;
   }
-  .desktop-nav { display: none; }
   .mobile-menu-btn { display: inline-flex !important; }
   .brand-section { min-width: 0; gap: 8px; }
   .brand { font-size: 1.1rem; }
