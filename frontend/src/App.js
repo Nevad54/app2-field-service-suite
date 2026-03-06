@@ -68,6 +68,39 @@ const hasFrontendPermission = (user, permission) => {
   return allowed.includes('*') || allowed.includes(permission);
 };
 
+const ROLE_GUIDE = Object.freeze({
+  admin: {
+    label: 'Admin',
+    summary: 'Full access to all pages, settings, and account management.',
+  },
+  manager: {
+    label: 'Manager',
+    summary: 'Operations access for dispatch, jobs, reports, and team planning.',
+  },
+  dispatcher: {
+    label: 'Dispatcher',
+    summary: 'Day-to-day scheduling, jobs, customers, and field coordination.',
+  },
+  technician: {
+    label: 'Technician',
+    summary: 'Assigned job execution, check-in/check-out, notes, and updates.',
+  },
+  client: {
+    label: 'Client',
+    summary: 'Customer portal access to own jobs and invoices only.',
+  },
+});
+
+const ACCOUNT_STATUS_GUIDE = Object.freeze({
+  active: 'Can sign in and use assigned pages.',
+  disabled: 'Access turned off by admin.',
+  locked: 'Temporarily blocked until admin reactivates.',
+  invited: 'Account exists but is not yet activated.',
+});
+
+const formatRoleLabel = (role) => ROLE_GUIDE[String(role || '').toLowerCase()]?.label || String(role || 'Unknown');
+const roleSummary = (role) => ROLE_GUIDE[String(role || '').toLowerCase()]?.summary || 'No role summary available.';
+
 const normalizePhotoTag = (value) => {
   const next = String(value || '').toLowerCase().trim();
   return PHOTO_TAG_OPTIONS.includes(next) ? next : null;
@@ -218,16 +251,31 @@ function LoginPage({ onLogin, isLoggedIn }) {
           </button>
         </form>
         
-          <div className="demo-accounts">
-            <p className="demo-title">Demo Accounts:</p>
-            <div className="demo-grid">
-              <span className="demo-role admin">admin / 1111</span>
-              <span className="demo-role dispatcher">manager / 1111</span>
-              <span className="demo-role dispatcher">dispatcher / 1111</span>
-              <span className="demo-role technician">technician / 1111</span>
-              <span className="demo-role client">client / 1111</span>
-            </div>
+        <div className="demo-accounts">
+          <p className="demo-title">Staff Demo Accounts:</p>
+          <div className="demo-grid">
+            <span className="demo-role admin">admin / 1111</span>
+            <span className="demo-role dispatcher">manager / 1111</span>
+            <span className="demo-role dispatcher">dispatcher / 1111</span>
+            <span className="demo-role technician">technician / 1111</span>
           </div>
+          <p className="demo-title demo-subtitle">Customer account uses Client Portal login:</p>
+          <div className="demo-grid">
+            <span className="demo-role client">contact@acme.com / client</span>
+          </div>
+        </div>
+
+        <div className="role-guide">
+          <h3>Role Guide</h3>
+          <div className="role-guide-grid">
+            {['admin', 'manager', 'dispatcher', 'technician', 'client'].map((role) => (
+              <article key={role} className="role-guide-item">
+                <strong>{formatRoleLabel(role)}</strong>
+                <p>{roleSummary(role)}</p>
+              </article>
+            ))}
+          </div>
+        </div>
         
         <div className="client-portal-link">
           <p>Are you a customer? <Link to="/client-login">Login to Client Portal</Link></p>
@@ -3359,6 +3407,14 @@ function UsersPage({ token, user }) {
   const [workingUserId, setWorkingUserId] = useState('');
 
   const canManageAccounts = hasFrontendPermission(user, 'accounts.manage');
+  const statusSummary = (status) => ACCOUNT_STATUS_GUIDE[String(status || '').toLowerCase()] || 'No status summary available.';
+  const formatStatusLabel = (status) => {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'on_leave') return 'On Leave';
+    if (normalized === 'not_started') return 'Not Started';
+    if (!normalized) return 'Unknown';
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+  };
 
   const fetchUsers = useCallback(async () => {
     if (!canManageAccounts) return;
@@ -3415,6 +3471,29 @@ function UsersPage({ token, user }) {
         </button>
       </div>
 
+      <div className="users-help">
+        <div className="users-help-block">
+          <h3>Role Differences</h3>
+          <ul className="users-help-list">
+            {['admin', 'manager', 'dispatcher', 'technician', 'client'].map((role) => (
+              <li key={role}>
+                <strong>{formatRoleLabel(role)}:</strong> {roleSummary(role)}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="users-help-block">
+          <h3>Account Status Meaning</h3>
+          <ul className="users-help-list">
+            {['active', 'disabled', 'locked', 'invited'].map((status) => (
+              <li key={status}>
+                <strong>{formatStatusLabel(status)}:</strong> {statusSummary(status)}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
       {error ? <div className="form-error-box">{error}</div> : null}
       {success ? <div className="form-success-box">{success}</div> : null}
       {loading ? <p className="loading">Loading users...</p> : null}
@@ -3427,6 +3506,7 @@ function UsersPage({ token, user }) {
               <tr>
                 <th>Username</th>
                 <th>Role</th>
+                <th>Access Summary</th>
                 <th>Status</th>
                 <th>Action</th>
               </tr>
@@ -3435,19 +3515,20 @@ function UsersPage({ token, user }) {
               {users.map((entry) => (
                 <tr key={entry.id}>
                   <td>{entry.username}</td>
-                  <td>{entry.role}</td>
+                  <td>{formatRoleLabel(entry.role)}</td>
+                  <td>{roleSummary(entry.role)}</td>
                   <td>
                     <span className={`status-badge ${entry.account_status || 'active'}`}>
-                      {entry.account_status || 'active'}
+                      {formatStatusLabel(entry.account_status || 'active')}
                     </span>
                   </td>
                   <td>
                     <div className="inline-input-group">
                       <select defaultValue={entry.account_status || 'active'} id={`status-${entry.id}`}>
-                        <option value="active">active</option>
-                        <option value="disabled">disabled</option>
-                        <option value="locked">locked</option>
-                        <option value="invited">invited</option>
+                        <option value="active">Active</option>
+                        <option value="disabled">Disabled</option>
+                        <option value="locked">Locked</option>
+                        <option value="invited">Invited</option>
                       </select>
                       <button
                         type="button"
