@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const { createDb } = require('./db/index-supabase');
@@ -12,6 +13,7 @@ const JOB_UPLOADS_DIR = path.join(UPLOADS_DIR, 'jobs');
 const PHOTO_TAGS = new Set(['before', 'after', 'damage', 'parts', 'other']);
 const SUPABASE_STORAGE_BUCKET = String(process.env.SUPABASE_STORAGE_BUCKET || 'job-photos').trim();
 const SIGNED_URL_TTL_SECONDS = Number(process.env.SUPABASE_SIGNED_URL_TTL || 3600);
+const PASSWORD_BCRYPT_ROUNDS = Number(process.env.PASSWORD_BCRYPT_ROUNDS || 10);
 const DEFAULT_DISPATCH_SETTINGS = Object.freeze({
     maxJobsPerTechnicianPerDay: 2,
     slaDueSoonDays: 1
@@ -403,6 +405,14 @@ const toSafeUser = (user) => ({
     role: user.role,
 });
 
+const normalizeAccountStatus = (value) => {
+    const status = String(value || '').trim().toLowerCase();
+    if (status === 'disabled' || status === 'locked' || status === 'invited') return status;
+    return 'active';
+};
+
+const isBcryptHash = (value) => /^\$2[aby]\$\d\d\$/.test(String(value || ''));
+
 const getBearerToken = (req) => {
     const raw = String(req.headers.authorization || '');
     if (!raw.toLowerCase().startsWith('bearer ')) return '';
@@ -648,15 +658,51 @@ const saveCompletionProof = async (jobId, payload, authUser) => {
     return proof;
 };
 
+const authenticateStaffUser = async ({ username, password, db }) => {
+    const user = memoryCache.users.find((item) => String(item.username || '').toLowerCase() === username);
+    if (!user) return { ok: false, reason: 'invalid_credentials' };
+
+    if (String(user.role || '').toLowerCase() === 'client') {
+        return { ok: false, reason: 'client_must_use_client_login' };
+    }
+
+    const accountStatus = normalizeAccountStatus(user.account_status);
+    if (accountStatus !== 'active') {
+        return { ok: false, reason: 'account_not_active' };
+    }
+
+    const storedPassword = String(user.password || '');
+    let validPassword = false;
+    let shouldUpgradePassword = false;
+
+    if (isBcryptHash(storedPassword)) {
+        validPassword = await bcrypt.compare(password, storedPassword);
+    } else {
+        validPassword = storedPassword === password;
+        shouldUpgradePassword = validPassword;
+    }
+
+    if (!validPassword) {
+        return { ok: false, reason: 'invalid_credentials' };
+    }
+
+    if (shouldUpgradePassword) {
+        user.password = await bcrypt.hash(password, PASSWORD_BCRYPT_ROUNDS);
+        await db.persistUser(user);
+    }
+
+    return { ok: true, user };
+};
+
 const startServer = async () => {
     console.log('Initializing Supabase connection...');
     dbInstance = createDb();
 
     const defaultUsers = [
-        { id: 'u-admin', username: 'admin', password: '1111', role: 'admin' },
-        { id: 'u-dispatch', username: 'dispatcher', password: '1111', role: 'dispatcher' },
-        { id: 'u-tech', username: 'technician', password: '1111', role: 'technician' },
-        { id: 'u-client', username: 'client', password: '1111', role: 'client' },
+        { id: 'u-admin', username: 'admin', password: '1111', role: 'admin', account_status: 'active' },
+        { id: 'u-dispatch', username: 'dispatcher', password: '1111', role: 'dispatcher', account_status: 'active' },
+        { id: 'u-tech', username: 'technician', password: '1111', role: 'technician', account_status: 'active' },
+        { id: 'u-client', username: 'client', password: '1111', role: 'client', account_status: 'active' },
     ];
 
     const defaultTechnicians = [
@@ -793,19 +839,18 @@ const startServer = async () => {
     app.post('/api/auth/login', async (req, res) => {
         const username = String(req.body.username || '').trim().toLowerCase();
         const password = String(req.body.password || '');
-        const user = memoryCache.users.find((item) => item.username.toLowerCase() === username && item.password === password);
 
-        // Also try checking customers to mimic the client portal logic
-        const client = memoryCache.customers.find(c => c.email.toLowerCase() === username);
-
-        let tokenUser;
-        if (user) {
-            tokenUser = toSafeUser(user);
-        } else if (client) {
-            tokenUser = { id: client.id, username: client.name, role: 'client', email: client.email };
-        } else {
+        const authResult = await authenticateStaffUser({ username, password, db: dbInstance });
+        if (!authResult.ok) {
+            if (authResult.reason === 'client_must_use_client_login') {
+                return res.status(403).json({ error: 'Use client portal login for client accounts' });
+            }
+            if (authResult.reason === 'account_not_active') {
+                return res.status(403).json({ error: 'Account is not active' });
+            }
             return res.status(401).json({ error: 'Invalid credentials' });
         }
+        const tokenUser = toSafeUser(authResult.user);
 
         const token = crypto.randomBytes(24).toString('hex');
         sessions.set(token, { user: tokenUser, createdAt: Date.now() });

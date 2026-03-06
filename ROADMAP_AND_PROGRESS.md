@@ -206,11 +206,25 @@ Date: 2026-03-06
      - emits `test-results/flaky-trend.json` and `test-results/flaky-trend.md`
    - Wired flaky trend reporting into CI with always-on artifact upload:
      - `flaky-trend-report`
+9. Roles/accounts hardening (phase 1):
+   - Split staff/client authentication paths:
+     - `/api/auth/login` now rejects `client` role accounts and directs to client portal login
+     - `/api/client/login` remains the client entry path
+   - Added user account lifecycle field support:
+     - `users.account_status` (`active`, `disabled`, `locked`, `invited`)
+     - staff login now blocks non-active accounts
+   - Added password storage hardening with backward compatibility:
+     - Added `bcryptjs` verification for hashed passwords
+     - Legacy plaintext demo passwords auto-upgrade to bcrypt hash on successful login
+   - Added regression coverage for auth path separation:
+     - client-role account cannot authenticate via staff login route (`403`)
+   - Added schema upgrade support:
+     - `ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status TEXT DEFAULT 'active'`
 
 ## Validation Status
 
 1. Frontend build passes (2026-03-06) after Sprint 5 phase-2 accessibility work.
-2. Backend API regression tests pass (`14/14`, 2026-03-06).
+2. Backend API regression tests pass (`15/15`, 2026-03-06) after roles/accounts hardening phase 1.
 3. Runtime startup check passes with healthy ports and route validation (`start-app.ps1`, 2026-03-06):
    - `GET /api/status` responds
    - `GET /api/settings/dispatch` responds after auth
@@ -236,8 +250,9 @@ Date: 2026-03-06
 12. Sprint 5 hardening follow-up is complete for initial CI + negative-path scope (workflow + expanded E2E depth).
 13. Sprint 5 hardening follow-up now includes CI artifact capture and explicit release-gate policy.
 14. Sprint 5 sustained quality follow-up now includes outage/latency E2E simulation coverage and flaky trend reporting.
-15. Next value is deeper resilience: broaden outage simulation to additional high-traffic screens and add scheduled CI runs for trend baselining.
+15. Sprint 5 sustained quality follow-up now includes roles/accounts hardening phase 1 (staff/client auth split + account status + password hashing upgrade path).
+16. Next value is role governance phase 2: introduce `manager` role and permission-flag middleware for sensitive operations.
 
 ## Suggested Next Task
 
-1. Expand resilience coverage to Dashboard/Jobs/Schedule API outage cases and add a scheduled CI cadence for weekly flaky trend snapshots.
+1. Implement roles/accounts phase 2: add `manager` role and shift critical endpoints from role-only checks to permission-flag checks.

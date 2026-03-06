@@ -10,6 +10,13 @@ ADD COLUMN IF NOT EXISTS storage_path TEXT;
 ALTER TABLE IF EXISTS job_photos
 ADD COLUMN IF NOT EXISTS tag_note TEXT;
 
+ALTER TABLE IF EXISTS users
+ADD COLUMN IF NOT EXISTS account_status TEXT DEFAULT 'active';
+
+UPDATE users
+SET account_status = 'active'
+WHERE account_status IS NULL;
+
 CREATE TABLE IF NOT EXISTS app_settings (
   key TEXT PRIMARY KEY,
   value_json JSONB NOT NULL,

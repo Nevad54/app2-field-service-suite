@@ -95,7 +95,8 @@ const createDb = () => {
                 id: u.id,
                 username: u.username,
                 password: u.password,
-                role: u.role
+                role: u.role,
+                account_status: u.account_status || 'active'
             })));
             if (error) console.error("Error seeding users:", error.message);
             else console.log(`Seeded ${defaultData.users.length} users`);
@@ -196,7 +197,16 @@ const createDb = () => {
 
     const loadUsers = async () => {
         const { data } = await supabase.from('users').select('*').order('username');
-        return data || [];
+        if (!data) return [];
+        return data.map((row) => ({
+            id: row.id,
+            username: row.username,
+            password: row.password,
+            role: row.role,
+            account_status: row.account_status || 'active',
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }));
     };
 
     const loadCustomers = async () => {
@@ -649,6 +659,18 @@ const createDb = () => {
         });
     };
 
+    const persistUser = async (user) => {
+        await supabase.from('users').upsert({
+            id: user.id,
+            username: user.username,
+            password: user.password,
+            role: user.role,
+            account_status: user.account_status || 'active',
+            created_at: user.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        });
+    };
+
     const deleteQuote = async (id) => {
         await supabase.from('quotes').delete().eq('id', id);
     };
@@ -792,6 +814,7 @@ const createDb = () => {
         deleteCustomer,
         persistJob,
         persistInvoice,
+        persistUser,
         persistSession,
         deleteSession,
         loadSessions,

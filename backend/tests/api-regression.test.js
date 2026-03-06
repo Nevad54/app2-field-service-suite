@@ -140,6 +140,19 @@ test('GET client portal endpoints return arrays for client token', async () => {
   assert.ok(Array.isArray(invoices.payload), 'Client invoices should return an array');
 });
 
+test('Staff login rejects client-role account', async () => {
+  const staffLoginWithClient = await api('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'client', password: '1111' },
+  });
+  assert.equal(staffLoginWithClient.status, 403, 'Client role should not authenticate via staff login route');
+  assert.match(
+    String(staffLoginWithClient.payload.error || ''),
+    /client portal/i,
+    'Staff login rejection should direct client users to client portal login'
+  );
+});
+
 test('Technician lifecycle: worklog + checkin + checkout', async () => {
   const job = await api('/api/jobs', {
     method: 'POST',
