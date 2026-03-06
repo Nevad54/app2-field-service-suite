@@ -258,12 +258,24 @@ Date: 2026-03-06
      - dispatch settings/editor access
      - job management controls
      - back-office navigation grouping
+13. Roles/accounts governance (phase 5):
+   - Added granular frontend action-level permission gating:
+     - admin-only job delete action visibility in Jobs page
+     - admin-only quote delete action visibility in Quotes page
+     - export action/page visibility now controlled by explicit `exports.view` permission
+   - Added quote-action permission alignment in UI:
+     - create/edit/accept/reject/convert quote controls hidden for non-quote-manage roles
+   - Added account lifecycle-focused activity filtering in Activity page:
+     - new `Accounts` filter for `account_status` lifecycle events
+     - account activity icon mapping for improved audit scanning
+   - Added frontend access guardrails for Activity and Export pages when permission is missing (clear empty-state messaging).
 
 ## Validation Status
 
 1. Frontend build passes (2026-03-06) after Sprint 5 phase-2 accessibility work.
 2. Backend API regression tests pass (`17/17`, 2026-03-06) after roles/accounts governance phase 3.
 3. Frontend build passes (2026-03-06) after roles/accounts governance phase 4 (permission-map + users admin page).
+4. Frontend build and backend API regression pass after roles/accounts governance phase 5 (`17/17` API, 2026-03-06).
 3. Runtime startup check passes with healthy ports and route validation (`start-app.ps1`, 2026-03-06):
    - `GET /api/status` responds
    - `GET /api/settings/dispatch` responds after auth
@@ -293,8 +305,9 @@ Date: 2026-03-06
 16. Roles/accounts governance phase 2 is complete (`manager` role + permission middleware on sensitive operations).
 17. Roles/accounts governance phase 3 is complete (full mutating-route permission migration + account lifecycle APIs + session invalidation for non-active accounts).
 18. Roles/accounts governance phase 4 is complete (frontend admin user-management UI + permission-aligned visibility gates).
-19. Next value is role governance phase 5: add granular frontend action-level permission checks (delete/export/optimize controls) from shared permission catalog and wire audit-log UI filters for account lifecycle events.
+19. Roles/accounts governance phase 5 is complete (granular frontend permission gating + account lifecycle activity filtering).
+20. Next value is role governance phase 6: expose backend permission catalog via API and drive frontend permissions dynamically from server-provided capabilities.
 
 ## Suggested Next Task
 
-1. Implement roles/accounts phase 5: complete granular frontend action-level permission gating and add account lifecycle audit views.
+1. Implement roles/accounts phase 6: add server-driven permission capability payload and consume it in frontend for dynamic access control.

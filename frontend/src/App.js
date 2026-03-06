@@ -1537,6 +1537,7 @@ function JobsPage({ token, user }) {
     customerAccepted: false,
   });
   const canManageJobs = hasFrontendPermission(user, 'jobs.manage');
+  const canDeleteJobs = hasFrontendPermission(user, 'jobs.delete.any');
   const isTechnician = user.role === 'technician';
   const canEditWorklog = canManageJobs || isTechnician;
 
@@ -2376,7 +2377,7 @@ function JobsPage({ token, user }) {
                   <span className={`category-tag ${job.category}`}>{job.category}</span>
                 </div>
                 <div className="job-actions-row">
-                  {canManageJobs ? (
+                  {canDeleteJobs ? (
                     <button
                       type="button"
                       className="btn-icon btn-danger"
@@ -2759,7 +2760,7 @@ function JobsPage({ token, user }) {
                       </div>
                       <span className="photo-upload-hint">Type applies to the photo you upload now.</span>
                     </div>
-                    {canManageJobs && (
+                    {canDeleteJobs && (
                       <div className="manager-job-actions">
                         <button
                           type="button"
@@ -3149,49 +3150,68 @@ function InvoicesPage({ token }) {
 }
 
 // ============== ACTIVITY PAGE ==============
-function ActivityPage({ token }) {
+function ActivityPage({ token, user }) {
   const [activities, setActivities] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('all');
+  const canViewActivity = hasFrontendPermission(user, 'customers.manage');
 
   useEffect(() => {
+    if (!canViewActivity) return;
     setLoading(true);
     setError('');
     apiFetch('/api/activity', { token })
       .then(data => setActivities(data || []))
       .catch(e => setError(e.message || 'Failed to load activity'))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [canViewActivity, token]);
 
   const getActivityIcon = (action) => {
-    if (action.includes('login')) return '🔑';
-    if (action.includes('logout')) return '🚪';
-    if (action.includes('created')) return '➕';
-    if (action.includes('updated')) return '✏️';
-    if (action.includes('deleted')) return '🗑️';
-    if (action.includes('checkin')) return '📍';
-    if (action.includes('checkout')) return '✅';
-    if (action.includes('invoice')) return '📄';
-    if (action.includes('status')) return '🔄';
-    return '📋';
+    if (action.includes('login')) return '??';
+    if (action.includes('logout')) return '??';
+    if (action.includes('created')) return '?';
+    if (action.includes('updated')) return '??';
+    if (action.includes('deleted')) return '???';
+    if (action.includes('checkin')) return '??';
+    if (action.includes('checkout')) return '?';
+    if (action.includes('invoice')) return '??';
+    if (action.includes('account_status')) return '???';
+    if (action.includes('status')) return '??';
+    return '??';
   };
 
   const filteredActivities = useMemo(() => {
     if (filter === 'all') return activities;
+    if (filter === 'account') {
+      return activities.filter((a) =>
+        String(a.action || '').includes('account_status') ||
+        String(a.entityType || a.entity_type || '').toLowerCase() === 'user'
+      );
+    }
     return activities.filter(a => a.action?.includes(filter));
   }, [activities, filter]);
+
+  if (!canViewActivity) {
+    return (
+      <section className="card">
+        <h1>?? Activity Log</h1>
+        <p className="empty-state">You do not have access to activity history.</p>
+      </section>
+    );
+  }
 
   return (
     <section className="card">
       <div className="page-header">
-        <h1>📝 Activity Log</h1>
+        <h1>?? Activity Log</h1>
         <div className="filter-buttons">
           <button className={`filter-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>All</button>
           <button className={`filter-btn ${filter === 'job' ? 'active' : ''}`} onClick={() => setFilter('job')}>Jobs</button>
           <button className={`filter-btn ${filter === 'customer' ? 'active' : ''}`} onClick={() => setFilter('customer')}>Customers</button>
           <button className={`filter-btn ${filter === 'invoice' ? 'active' : ''}`} onClick={() => setFilter('invoice')}>Invoices</button>
           <button className={`filter-btn ${filter === 'login' ? 'active' : ''}`} onClick={() => setFilter('login')}>Auth</button>
+          <button className={`filter-btn ${filter === 'account' ? 'active' : ''}`} onClick={() => setFilter('account')}>Accounts</button>
         </div>
       </div>
 
@@ -3207,7 +3227,7 @@ function ActivityPage({ token }) {
               <div className="activity-content">
                 <p className="activity-description">{activity.description}</p>
                 <span className="activity-meta">
-                  {activity.userId} • {new Date(activity.timestamp).toLocaleString()}
+                  {activity.userId || activity.user_id} ? {new Date(activity.timestamp).toLocaleString()}
                 </span>
               </div>
             </div>
@@ -3219,10 +3239,20 @@ function ActivityPage({ token }) {
 }
 
 // ============== EXPORT PAGE ==============
-function ExportPage({ token }) {
+function ExportPage({ token, user }) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [lastExport, setLastExport] = useState(null);
+  const canExport = hasFrontendPermission(user, 'exports.view');
+
+  if (!canExport) {
+    return (
+      <section className="card">
+        <h1>?? Export Reports</h1>
+        <p className="empty-state">You do not have permission to export data.</p>
+      </section>
+    );
+  }
 
   const handleExport = async (type) => {
     setExporting(true);
@@ -3231,7 +3261,7 @@ function ExportPage({ token }) {
       const response = await fetch(apiUrl(`/api/export/${type}`), {
         headers: { Authorization: `Bearer ${token}` },
       });
-      
+
       if (!response.ok) {
         const contentType = response.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
@@ -3251,7 +3281,7 @@ function ExportPage({ token }) {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      
+
       setLastExport({ type, time: new Date() });
     } catch (e) {
       setError(e.message || 'Failed to export');
@@ -3261,20 +3291,20 @@ function ExportPage({ token }) {
   };
 
   const exportOptions = [
-    { type: 'jobs', icon: '📋', title: 'Jobs Export', description: 'Export all jobs with status, priority, customer, dates, and notes' },
-    { type: 'customers', icon: '👥', title: 'Customers Export', description: 'Export all customers with contact information and notes' },
+    { type: 'jobs', icon: '??', title: 'Jobs Export', description: 'Export all jobs with status, priority, customer, dates, and notes' },
+    { type: 'customers', icon: '??', title: 'Customers Export', description: 'Export all customers with contact information and notes' },
   ];
 
   return (
     <section className="card">
-      <h1>📊 Export Reports</h1>
+      <h1>?? Export Reports</h1>
       <p>Download your data in CSV format for use in Excel, Google Sheets, or other tools.</p>
-      
+
       {error ? <div className="form-error-box">{error}</div> : null}
-      
+
       {lastExport && (
         <div className="export-success">
-          ✓ Successfully exported {lastExport.type} at {lastExport.time.toLocaleTimeString()}
+          ? Successfully exported {lastExport.type} at {lastExport.time.toLocaleTimeString()}
         </div>
       )}
 
@@ -3284,12 +3314,12 @@ function ExportPage({ token }) {
             <div className="export-icon">{opt.icon}</div>
             <h3>{opt.title}</h3>
             <p>{opt.description}</p>
-            <button 
-              className="btn-primary" 
+            <button
+              className="btn-primary"
               onClick={() => handleExport(opt.type)}
               disabled={exporting}
             >
-              {exporting ? '⏳ Exporting...' : '📥 Download CSV'}
+              {exporting ? '? Exporting...' : '?? Download CSV'}
             </button>
           </div>
         ))}
@@ -3521,6 +3551,7 @@ export default function App() {
 
   const canManageCustomers = hasFrontendPermission(auth?.user, 'customers.manage');
   const canManageAccounts = hasFrontendPermission(auth?.user, 'accounts.manage');
+  const canViewExports = hasFrontendPermission(auth?.user, 'exports.view');
   const unreadCount = notifications.filter(n => !n.read).length;
 
     const navLinks = useMemo(() => (
@@ -3547,14 +3578,14 @@ export default function App() {
               <NavLink to="/equipment" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>🔧 Equipment</NavLink>
               <NavLink to="/quotes" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📝 Quotes</NavLink>
               <NavLink to="/recurring" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>🔁 Recurring</NavLink>
-              <NavLink to="/export" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>📊 Export</NavLink>
+              {canViewExports ? <NavLink to="/export" onClick={() => { setMobileNavOpen(false); setShowToolsDropdown(false); }}>Export</NavLink> : null}
             </div>
           )}
         </div>
       ) : null}
       {!isAuthed ? <NavLink to="/login" onClick={() => setMobileNavOpen(false)}>Login</NavLink> : null}
     </>
-  ), [isAuthed, canManageCustomers, showToolsDropdown]);
+  ), [isAuthed, canManageCustomers, canManageAccounts, canViewExports, showToolsDropdown]);
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -3727,7 +3758,7 @@ export default function App() {
             path="/activity"
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
-                <ActivityPage token={auth?.token} />
+                <ActivityPage token={auth?.token} user={auth?.user} />
               </ProtectedRoute>
             )}
           />
@@ -3775,7 +3806,7 @@ export default function App() {
             path="/quotes"
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
-                <QuotesPage token={auth?.token} />
+                <QuotesPage token={auth?.token} user={auth?.user} />
               </ProtectedRoute>
             )}
           />
@@ -3799,7 +3830,7 @@ export default function App() {
             path="/export"
             element={(
               <ProtectedRoute isAuthed={isAuthed}>
-                <ExportPage token={auth?.token} />
+                <ExportPage token={auth?.token} user={auth?.user} />
               </ProtectedRoute>
             )}
           />

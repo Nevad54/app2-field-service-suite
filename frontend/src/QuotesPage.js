@@ -1,7 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from './api';
 
-export default function QuotesPage({ token }) {
+const QUOTE_ROLE_PERMISSIONS = Object.freeze({
+  admin: ['*'],
+  manager: ['quotes.manage'],
+  dispatcher: ['quotes.manage'],
+  technician: [],
+  client: [],
+});
+
+const canQuotePermission = (user, permission) => {
+  const role = String(user?.role || '').toLowerCase();
+  const allowed = QUOTE_ROLE_PERMISSIONS[role] || [];
+  return allowed.includes('*') || allowed.includes(permission);
+};
+
+export default function QuotesPage({ token, user }) {
   const [quotes, setQuotes] = useState([]);
   const [customers, setCustomers] = useState([]);
   const [error, setError] = useState('');
@@ -12,6 +26,8 @@ export default function QuotesPage({ token }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [convertDraft, setConvertDraft] = useState({ quote: null, scheduledDate: '' });
+  const canManageQuotes = canQuotePermission(user, 'quotes.manage');
+  const canDeleteQuotes = canQuotePermission(user, 'quotes.delete.any');
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -211,9 +227,9 @@ export default function QuotesPage({ token }) {
     <section className="card">
       <div className="page-header">
         <h1>📝 Quotes / Estimates</h1>
-        {!showForm && (
+        {!showForm && canManageQuotes ? (
           <button className="btn-primary" onClick={() => setShowForm(true)}>+ Create Quote</button>
-        )}
+        ) : null}
       </div>
 
       {error ? <div className="form-error-box">{error}</div> : null}
@@ -452,17 +468,17 @@ export default function QuotesPage({ token }) {
                 {quote.jobId && <p><strong>Job Created:</strong> {quote.jobId}</p>}
               </div>
               <div className="invoice-actions">
-                {quote.status === 'pending' && (
+                {canManageQuotes && quote.status === 'pending' && (
                   <>
                     <button className="btn-success" onClick={() => handleAccept(quote.id)}>✓ Accept</button>
                     <button className="btn-danger" onClick={() => handleReject(quote.id)}>✕ Reject</button>
                   </>
                 )}
-                {quote.status === 'accepted' && !quote.jobId && (
+                {canManageQuotes && quote.status === 'accepted' && !quote.jobId && (
                   <button className="btn-primary" onClick={() => openConvertModal(quote)}>Create Job</button>
                 )}
-                <button className="btn-secondary" onClick={() => handleEdit(quote)}>✏️ Edit</button>
-                <button className="btn-danger" onClick={() => handleDelete(quote.id)}>🗑️ Delete</button>
+                {canManageQuotes ? <button className="btn-secondary" onClick={() => handleEdit(quote)}>✏️ Edit</button> : null}
+                {canDeleteQuotes ? <button className="btn-danger" onClick={() => handleDelete(quote.id)}>🗑️ Delete</button> : null}
               </div>
             </div>
           ))}
