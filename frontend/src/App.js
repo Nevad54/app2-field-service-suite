@@ -3836,9 +3836,8 @@ export default function App() {
                 <div key={section.title} className="side-nav-section">
                   <p className="side-nav-title">{section.title}</p>
                   {section.links.map((link) => (
-                    <NavLink key={link.to} to={link.to} end={Boolean(link.end)} className="nav-link-with-icon">
-                      <span className="nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
-                      <span>{link.label}</span>
+                    <NavLink key={link.to} to={link.to} end={Boolean(link.end)}>
+                      {link.label}
                     </NavLink>
                   ))}
                 </div>
