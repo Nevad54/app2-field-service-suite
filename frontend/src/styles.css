@@ -25,6 +25,9 @@
   --radius-sm: 8px;
   --sidebar-collapsed-width: 72px;
   --sidebar-expanded-width: 240px;
+  --scrollbar-track: #e2e8f0;
+  --scrollbar-thumb: #94a3b8;
+  --scrollbar-thumb-hover: #64748b;
 }
 
 [data-theme="dark"] {
@@ -41,6 +44,9 @@
   --warning: #fbbf24;
   --danger: #f87171;
   --border: #334155;
+  --scrollbar-track: #1e293b;
+  --scrollbar-thumb: #475569;
+  --scrollbar-thumb-hover: #64748b;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -57,6 +63,26 @@ body {
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
+}
+
+/* Theme-consistent scrollbars across all scrollable containers */
+* {
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid var(--scrollbar-track);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 .app-shell { min-height: 100vh; width: 100%; overflow-x: hidden; }
@@ -960,6 +986,13 @@ textarea:focus-visible {
 .notification-item strong { display: block; margin-bottom: 4px; font-size: 0.9rem; }
 .notification-item p { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 4px; }
 .notification-time { font-size: 0.75rem; color: var(--text-muted); }
+[data-theme="dark"] .notifications-panel { background: #111827; border-color: rgba(148, 163, 184, 0.35); }
+[data-theme="dark"] .notifications-panel h3 { border-bottom-color: rgba(148, 163, 184, 0.35); color: #e2e8f0; }
+[data-theme="dark"] .notification-item { border-bottom-color: rgba(148, 163, 184, 0.28); }
+[data-theme="dark"] .notification-item:hover { background: #1f2937; }
+[data-theme="dark"] .notification-item.unread { background: rgba(56, 189, 248, 0.16); }
+[data-theme="dark"] .notification-item p { color: #cbd5e1; }
+[data-theme="dark"] .notification-time { color: #94a3b8; }
 
 /* Loading & Empty States */
 .loading, .loading-state { text-align: center; padding: 40px; color: var(--text-muted); }
