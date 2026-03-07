@@ -322,6 +322,15 @@ Date: 2026-03-06
      - "Access Restricted" page state
      - explicit required capability hint
      - dashboard return action
+18. Roles/accounts governance (phase 9):
+   - Added unauthorized deep-link frontend E2E coverage:
+     - technician deep-link attempts to restricted routes now verified in Playwright (`/users`, `/export`, `/quotes`, `/inventory`)
+     - assertions validate route-level "Access Restricted" state and required-capability guidance text
+   - Removed redundant page-level permission gating where route-level capability guards now enforce access:
+     - Activity page no longer duplicates `customers.manage` gate internally
+     - Export page no longer duplicates `exports.view` gate internally
+     - Users page no longer duplicates `accounts.manage` gate internally
+   - Kept capability checks focused at route entry for clearer authorization contract and lower UI-branch drift risk
 
 ## Validation Status
 
@@ -341,6 +350,7 @@ Date: 2026-03-06
 8. Flaky trend report generation passes (`npm run test:e2e:flaky-report`, 2026-03-06).
 9. Frontend build passes after roles/accounts governance phase 7 nav/capability UX update (`npm run build`, 2026-03-07).
 10. Frontend build passes after roles/accounts governance phase 8 route-guard hardening (`npm run build`, 2026-03-08).
+11. Frontend E2E unauthorized deep-link guard coverage passes (`npx playwright test tests/e2e/error-paths.spec.js --grep "technician deep-link"`, 2026-03-08).
 
 ## Current Status Summary
 
@@ -367,8 +377,9 @@ Date: 2026-03-06
 21. Roles/accounts governance phase 6 is complete (backend capabilities endpoint + server-driven frontend permission checks).
 22. Roles/accounts governance phase 7 is complete (capability-aware nav discovery UX + static role-check removal in active flows).
 23. Roles/accounts governance phase 8 is complete (route-level capability guards + consistent no-access guidance for direct URL attempts).
-24. Next value is role governance phase 9: align remaining page-level permission checks to the shared route-guard contract and add focused E2E coverage for unauthorized deep links.
+24. Roles/accounts governance phase 9 is complete (unauthorized deep-link E2E coverage + redundant page-level guard cleanup).
+25. Next value is role governance phase 10: extend capability-aware guidance to contextual action disable states (not just route access) with focused negative-path E2E coverage.
 
 ## Suggested Next Task
 
-1. Implement roles/accounts phase 9: add unauthorized deep-link E2E coverage and remove now-redundant page-level permission gating where route guards already enforce the same rule.
+1. Implement roles/accounts phase 10: add capability-reason tooltips for disabled in-page actions and add E2E checks for forbidden action attempts across key pages.

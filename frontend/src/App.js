@@ -3244,17 +3244,15 @@ function ActivityPage({ token, user }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState('all');
-  const canViewActivity = hasFrontendPermission(user, 'customers.manage');
 
   useEffect(() => {
-    if (!canViewActivity) return;
     setLoading(true);
     setError('');
     apiFetch('/api/activity', { token })
       .then(data => setActivities(data || []))
       .catch(e => setError(e.message || 'Failed to load activity'))
       .finally(() => setLoading(false));
-  }, [canViewActivity, token]);
+  }, [token]);
 
   const getActivityIcon = (action) => {
     const normalized = String(action || '').toLowerCase();
@@ -3281,15 +3279,6 @@ function ActivityPage({ token, user }) {
     }
     return activities.filter(a => a.action?.includes(filter));
   }, [activities, filter]);
-
-  if (!canViewActivity) {
-    return (
-      <section className="card">
-        <h1>Activity Log</h1>
-        <p className="empty-state">You do not have access to activity history.</p>
-      </section>
-    );
-  }
 
   return (
     <section className="card">
@@ -3333,16 +3322,6 @@ function ExportPage({ token, user }) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [lastExport, setLastExport] = useState(null);
-  const canExport = hasFrontendPermission(user, 'exports.view');
-
-  if (!canExport) {
-    return (
-      <section className="card">
-        <h1>Export Reports</h1>
-        <p className="empty-state">You do not have permission to export data.</p>
-      </section>
-    );
-  }
 
   const handleExport = async (type) => {
     setExporting(true);
@@ -3439,7 +3418,6 @@ function UsersPage({ token, user }) {
   const [loading, setLoading] = useState(false);
   const [workingUserId, setWorkingUserId] = useState('');
 
-  const canManageAccounts = hasFrontendPermission(user, 'accounts.manage');
   const statusSummary = (status) => ACCOUNT_STATUS_GUIDE[String(status || '').toLowerCase()] || 'No status summary available.';
   const formatStatusLabel = (status) => {
     const normalized = String(status || '').toLowerCase();
@@ -3450,7 +3428,6 @@ function UsersPage({ token, user }) {
   };
 
   const fetchUsers = useCallback(async () => {
-    if (!canManageAccounts) return;
     setLoading(true);
     setError('');
     try {
@@ -3461,7 +3438,7 @@ function UsersPage({ token, user }) {
     } finally {
       setLoading(false);
     }
-  }, [canManageAccounts, token]);
+  }, [token]);
 
   useEffect(() => {
     fetchUsers();
@@ -3485,15 +3462,6 @@ function UsersPage({ token, user }) {
       setWorkingUserId('');
     }
   };
-
-  if (!canManageAccounts) {
-    return (
-      <section className="card">
-        <h1>Users</h1>
-        <p className="empty-state">You do not have access to account management.</p>
-      </section>
-    );
-  }
 
   return (
     <section className="card">

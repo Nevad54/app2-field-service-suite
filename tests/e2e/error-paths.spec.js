@@ -129,4 +129,26 @@ test.describe.serial('Error and guardrail UI paths', () => {
     await expect(page.getByText('Loading technicians...')).toHaveCount(0, { timeout: 15000 });
     await expect(page.locator('.team-grid, .empty-state').first()).toBeVisible();
   });
+
+  test('technician deep-link attempts to restricted routes show capability guidance', async ({ page }) => {
+    await loginStaff(page, 'technician', '1111');
+
+    const restrictedRoutes = [
+      { path: '/users', permission: 'accounts.manage' },
+      { path: '/export', permission: 'exports.view' },
+      { path: '/quotes', permission: 'quotes.manage' },
+      { path: '/inventory', permission: 'inventory.manage' },
+    ];
+
+    for (const entry of restrictedRoutes) {
+      await page.goto(entry.path);
+      await expect(page).toHaveURL(new RegExp(entry.path));
+      await expect(page.getByRole('heading', { name: 'Access Restricted' })).toBeVisible();
+      await expect(
+        page.locator('main .card .hint').filter({ hasText: `Requires capability: ${entry.permission}` }).first()
+      ).toBeVisible();
+      await page.getByRole('link', { name: 'Go to Dashboard' }).click();
+      await expect(page).toHaveURL(/\/dashboard/);
+    }
+  });
 });
