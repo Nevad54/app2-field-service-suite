@@ -3339,7 +3339,7 @@ function ExportPage({ token, user }) {
   if (!canExport) {
     return (
       <section className="card">
-        <h1>?? Export Reports</h1>
+        <h1>Export Reports</h1>
         <p className="empty-state">You do not have permission to export data.</p>
       </section>
     );
@@ -3395,20 +3395,20 @@ function ExportPage({ token, user }) {
   };
 
   const exportOptions = [
-    { type: 'jobs', icon: '??', title: 'Jobs Export', description: 'Export all jobs with status, priority, customer, dates, and notes' },
-    { type: 'customers', icon: '??', title: 'Customers Export', description: 'Export all customers with contact information and notes' },
+    { type: 'jobs', icon: 'CSV', title: 'Jobs Export', description: 'Export all jobs with status, priority, customer, dates, and notes' },
+    { type: 'customers', icon: 'CSV', title: 'Customers Export', description: 'Export all customers with contact information and notes' },
   ];
 
   return (
     <section className="card">
-      <h1>?? Export Reports</h1>
+      <h1>Export Reports</h1>
       <p>Download your data in CSV format for use in Excel, Google Sheets, or other tools.</p>
 
       {error ? <div className="form-error-box">{error}</div> : null}
 
       {lastExport && (
         <div className="export-success">
-          ? Successfully exported {lastExport.type} at {lastExport.time.toLocaleTimeString()}
+          Successfully exported {lastExport.type} at {lastExport.time.toLocaleTimeString()}
         </div>
       )}
 
@@ -3423,7 +3423,7 @@ function ExportPage({ token, user }) {
               onClick={() => handleExport(opt.type)}
               disabled={exporting}
             >
-              {exporting ? '? Exporting...' : '?? Download CSV'}
+              {exporting ? 'Exporting...' : 'Download CSV'}
             </button>
           </div>
         ))}
