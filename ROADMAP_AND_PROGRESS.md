@@ -303,6 +303,25 @@ Date: 2026-03-06
      - inaccessible links remain visible but disabled for discoverability
      - disabled links provide required-capability context text/tooltips
    - Removed duplicate local permission maps from `App.js` and `QuotesPage.js` to reduce drift risk
+17. Roles/accounts governance (phase 8):
+   - Added reusable route-level capability guard in frontend app shell:
+     - `CapabilityRoute` now enforces required permission at route entry
+   - Applied direct URL access guardrails for protected back-office routes:
+     - `/customers` (`customers.manage`)
+     - `/invoices` (`invoices.manage`)
+     - `/activity` (`customers.manage`)
+     - `/projects`, `/project-planner`, `/project-planner/:projectId` (`projects.manage`)
+     - `/team` (`technicians.manage`)
+     - `/inventory` (`inventory.manage`)
+     - `/equipment` (`equipment.manage`)
+     - `/quotes` (`quotes.manage`)
+     - `/recurring` (`recurring.manage`)
+     - `/export` (`exports.view`)
+     - `/users` (`accounts.manage`)
+   - Added consistent no-access guidance for unauthorized routes:
+     - "Access Restricted" page state
+     - explicit required capability hint
+     - dashboard return action
 
 ## Validation Status
 
@@ -321,6 +340,7 @@ Date: 2026-03-06
 7. Frontend E2E resilience simulation coverage passes (`npm run test:e2e`, `8/8`, 2026-03-06).
 8. Flaky trend report generation passes (`npm run test:e2e:flaky-report`, 2026-03-06).
 9. Frontend build passes after roles/accounts governance phase 7 nav/capability UX update (`npm run build`, 2026-03-07).
+10. Frontend build passes after roles/accounts governance phase 8 route-guard hardening (`npm run build`, 2026-03-08).
 
 ## Current Status Summary
 
@@ -346,8 +366,9 @@ Date: 2026-03-06
 20. UX language clarity pass is complete for Dashboard/Schedule SLA terminology.
 21. Roles/accounts governance phase 6 is complete (backend capabilities endpoint + server-driven frontend permission checks).
 22. Roles/accounts governance phase 7 is complete (capability-aware nav discovery UX + static role-check removal in active flows).
-23. Next value is role governance phase 8: add route-level capability guards for direct URL access handling with consistent required-capability guidance.
+23. Roles/accounts governance phase 8 is complete (route-level capability guards + consistent no-access guidance for direct URL attempts).
+24. Next value is role governance phase 9: align remaining page-level permission checks to the shared route-guard contract and add focused E2E coverage for unauthorized deep links.
 
 ## Suggested Next Task
 
-1. Implement roles/accounts phase 8: add reusable route-level capability guards for protected pages (including direct URL access) with consistent "required capability" no-access messaging.
+1. Implement roles/accounts phase 9: add unauthorized deep-link E2E coverage and remove now-redundant page-level permission gating where route guards already enforce the same rule.

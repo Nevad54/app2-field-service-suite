@@ -3593,6 +3593,23 @@ function ProtectedRoute({ isAuthed, children }) {
   return children;
 }
 
+function CapabilityRoute({ isAuthed, user, permission, children }) {
+  if (!isAuthed) return <Navigate to="/login" replace />;
+  if (!permission || hasFrontendPermission(user, permission)) return children;
+  return (
+    <section className="card">
+      <div className="page-header">
+        <h1>Access Restricted</h1>
+      </div>
+      <p className="empty-state">You do not have access to this page.</p>
+      <p className="hint">{capabilityTooltip(permission)}</p>
+      <div className="job-actions-row">
+        <Link to="/dashboard" className="btn-secondary btn-small">Go to Dashboard</Link>
+      </div>
+    </section>
+  );
+}
+
 // ============== MAIN APP ==============
 export default function App() {
   const location = useLocation();
@@ -3954,105 +3971,105 @@ export default function App() {
           <Route
             path="/customers"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="customers.manage">
                 <CustomersPage token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/invoices"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="invoices.manage">
                 <InvoicesPage token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/activity"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="customers.manage">
                 <ActivityPage token={auth?.token} user={auth?.user} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/projects"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="projects.manage">
                 <ProjectsPage token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/project-planner"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="projects.manage">
                 <ProjectPlanner token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/project-planner/:projectId"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="projects.manage">
                 <ProjectPlanner token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/team"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="technicians.manage">
                 <TeamPage token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/equipment"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="equipment.manage">
                 <EquipmentPage token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/quotes"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="quotes.manage">
                 <QuotesPage token={auth?.token} user={auth?.user} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/inventory"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="inventory.manage">
                 <InventoryPage token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/recurring"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="recurring.manage">
                 <RecurringPage token={auth?.token} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/export"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="exports.view">
                 <ExportPage token={auth?.token} user={auth?.user} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
             path="/users"
             element={(
-              <ProtectedRoute isAuthed={isAuthed}>
+              <CapabilityRoute isAuthed={isAuthed} user={auth?.user} permission="accounts.manage">
                 <UsersPage token={auth?.token} user={auth?.user} />
-              </ProtectedRoute>
+              </CapabilityRoute>
             )}
           />
           <Route
