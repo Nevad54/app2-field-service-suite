@@ -292,6 +292,17 @@ Date: 2026-03-06
      - Quotes page permission checks now use the same server-driven-first approach
    - Expanded regression coverage:
      - added API test validating login/me permission payload and capabilities endpoint contract
+16. Roles/accounts governance (phase 7):
+   - Replaced remaining frontend static role assumptions in active UI flows:
+     - Jobs technician action gating now uses capabilities (`jobs.execute.own`, `worklog.edit.own`) instead of a direct role-name check
+   - Added shared frontend permission utility module:
+     - `frontend/src/permissions.js`
+     - unified permission resolution for App and Quotes (server-driven permissions first, fallback role map retained)
+   - Implemented capability-aware navigation/action discovery UX:
+     - desktop sidebar and mobile drawer now evaluate per-link required capability
+     - inaccessible links remain visible but disabled for discoverability
+     - disabled links provide required-capability context text/tooltips
+   - Removed duplicate local permission maps from `App.js` and `QuotesPage.js` to reduce drift risk
 
 ## Validation Status
 
@@ -309,6 +320,7 @@ Date: 2026-03-06
 6. Frontend E2E full run remains green after CI/reporting hardening (`npm run test:e2e`, `6/6`, 2026-03-06).
 7. Frontend E2E resilience simulation coverage passes (`npm run test:e2e`, `8/8`, 2026-03-06).
 8. Flaky trend report generation passes (`npm run test:e2e:flaky-report`, 2026-03-06).
+9. Frontend build passes after roles/accounts governance phase 7 nav/capability UX update (`npm run build`, 2026-03-07).
 
 ## Current Status Summary
 
@@ -333,8 +345,9 @@ Date: 2026-03-06
 19. Roles/accounts governance phase 5 is complete (granular frontend permission gating + account lifecycle activity filtering).
 20. UX language clarity pass is complete for Dashboard/Schedule SLA terminology.
 21. Roles/accounts governance phase 6 is complete (backend capabilities endpoint + server-driven frontend permission checks).
-22. Next value is role governance phase 7: replace remaining frontend static role assumptions with capability-aware page navigation and action discovery UX.
+22. Roles/accounts governance phase 7 is complete (capability-aware nav discovery UX + static role-check removal in active flows).
+23. Next value is role governance phase 8: add route-level capability guards for direct URL access handling with consistent required-capability guidance.
 
 ## Suggested Next Task
 
-1. Implement roles/accounts phase 7: add capability-aware navigation and context tooltips so users see clear “why this is hidden/disabled” guidance.
+1. Implement roles/accounts phase 8: add reusable route-level capability guards for protected pages (including direct URL access) with consistent "required capability" no-access messaging.

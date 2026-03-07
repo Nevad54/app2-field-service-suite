@@ -1,22 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from './api';
-
-const QUOTE_ROLE_PERMISSIONS = Object.freeze({
-  admin: ['*'],
-  manager: ['quotes.manage'],
-  dispatcher: ['quotes.manage'],
-  technician: [],
-  client: [],
-});
-
-const canQuotePermission = (user, permission) => {
-  if (Array.isArray(user?.permissions) && user.permissions.length > 0) {
-    return user.permissions.includes('*') || user.permissions.includes(permission);
-  }
-  const role = String(user?.role || '').toLowerCase();
-  const allowed = QUOTE_ROLE_PERMISSIONS[role] || [];
-  return allowed.includes('*') || allowed.includes(permission);
-};
+import { hasFrontendPermission } from './permissions';
 
 export default function QuotesPage({ token, user }) {
   const [quotes, setQuotes] = useState([]);
@@ -29,8 +13,8 @@ export default function QuotesPage({ token, user }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [convertDraft, setConvertDraft] = useState({ quote: null, scheduledDate: '' });
-  const canManageQuotes = canQuotePermission(user, 'quotes.manage');
-  const canDeleteQuotes = canQuotePermission(user, 'quotes.delete.any');
+  const canManageQuotes = hasFrontendPermission(user, 'quotes.manage');
+  const canDeleteQuotes = hasFrontendPermission(user, 'quotes.delete.any');
 
   const fetchData = useCallback(async () => {
     setLoading(true);

@@ -8,6 +8,7 @@ import EquipmentPage from './EquipmentPage';
 import QuotesPage from './QuotesPage';
 import RecurringPage from './RecurringPage';
 import { apiFetch, apiUrl } from './api';
+import { capabilityTooltip, hasFrontendPermission } from './permissions';
 import {
   AUTH_STORAGE_KEY,
   CLIENT_AUTH_STORAGE_KEY,
@@ -17,56 +18,6 @@ import {
   loadStoredDarkMode
 } from './authStorage';
 const PHOTO_TAG_OPTIONS = ['before', 'after', 'damage', 'parts', 'other'];
-const FRONTEND_ROLE_PERMISSIONS = Object.freeze({
-  admin: ['*'],
-  manager: [
-    'customers.manage',
-    'jobs.manage',
-    'dispatch.manage',
-    'projects.manage',
-    'tasks.manage',
-    'notifications.manage',
-    'technicians.manage',
-    'inventory.manage',
-    'equipment.manage',
-    'quotes.manage',
-    'recurring.manage',
-    'invoices.manage',
-    'exports.view',
-  ],
-  dispatcher: [
-    'customers.manage',
-    'jobs.manage',
-    'dispatch.manage',
-    'projects.manage',
-    'tasks.manage',
-    'notifications.manage',
-    'technicians.manage',
-    'inventory.manage',
-    'equipment.manage',
-    'quotes.manage',
-    'recurring.manage',
-    'invoices.manage',
-    'exports.view',
-  ],
-  technician: [
-    'jobs.execute.own',
-    'worklog.edit.own',
-    'customer_updates.send.own',
-  ],
-  client: [
-    'client.portal',
-  ],
-});
-
-const hasFrontendPermission = (user, permission) => {
-  if (Array.isArray(user?.permissions) && user.permissions.length > 0) {
-    return user.permissions.includes('*') || user.permissions.includes(permission);
-  }
-  const role = String(user?.role || '').toLowerCase();
-  const allowed = FRONTEND_ROLE_PERMISSIONS[role] || [];
-  return allowed.includes('*') || allowed.includes(permission);
-};
 
 const ROLE_GUIDE = Object.freeze({
   admin: {
@@ -121,6 +72,43 @@ const NAV_ICON_BY_PATH = Object.freeze({
   '/client-login': '\u{1F4BB}',
 });
 const getNavIcon = (path, label) => NAV_ICON_BY_PATH[path] || String(label || '?').slice(0, 2).toUpperCase();
+const APP_NAV_SECTIONS = Object.freeze([
+  {
+    title: 'Main',
+    links: [
+      { to: '/dashboard', label: 'Dashboard' },
+      { to: '/jobs', label: 'Jobs' },
+      { to: '/schedule', label: 'Schedule' },
+    ],
+  },
+  {
+    title: 'Operations',
+    links: [
+      { to: '/customers', label: 'Customers', permission: 'customers.manage' },
+      { to: '/invoices', label: 'Invoices', permission: 'invoices.manage' },
+      { to: '/activity', label: 'Activity', permission: 'customers.manage' },
+      { to: '/projects', label: 'Projects', permission: 'projects.manage' },
+      { to: '/project-planner', label: 'Planner', permission: 'projects.manage' },
+      { to: '/team', label: 'Team', permission: 'technicians.manage' },
+    ],
+  },
+  {
+    title: 'Tools',
+    links: [
+      { to: '/inventory', label: 'Inventory', permission: 'inventory.manage' },
+      { to: '/equipment', label: 'Equipment', permission: 'equipment.manage' },
+      { to: '/quotes', label: 'Quotes', permission: 'quotes.manage' },
+      { to: '/recurring', label: 'Recurring', permission: 'recurring.manage' },
+      { to: '/export', label: 'Export', permission: 'exports.view' },
+    ],
+  },
+  {
+    title: 'Admin',
+    links: [
+      { to: '/users', label: 'Users', permission: 'accounts.manage' },
+    ],
+  },
+]);
 
 const normalizePhotoTag = (value) => {
   const next = String(value || '').toLowerCase().trim();
@@ -1637,8 +1625,10 @@ function JobsPage({ token, user }) {
   });
   const canManageJobs = hasFrontendPermission(user, 'jobs.manage');
   const canDeleteJobs = hasFrontendPermission(user, 'jobs.delete.any');
-  const isTechnician = user.role === 'technician';
-  const canEditWorklog = canManageJobs || isTechnician;
+  const canExecuteOwnJobs = hasFrontendPermission(user, 'jobs.execute.own');
+  const canEditOwnWorklog = hasFrontendPermission(user, 'worklog.edit.own');
+  const canSelfServeAssignedJobs = canExecuteOwnJobs || canEditOwnWorklog;
+  const canEditWorklog = canManageJobs || canSelfServeAssignedJobs;
 
   const [draft, setDraft] = useState({
     title: '',
@@ -1745,7 +1735,7 @@ function JobsPage({ token, user }) {
   }, [jobs, searchTerm, statusFilter, drilldown]);
 
   const technicianQuickJobs = useMemo(() => {
-    if (!isTechnician) return [];
+    if (!canSelfServeAssignedJobs) return [];
     const mine = jobs.filter((job) => job.assignedTo === user.username);
     if (techQuickFilter === 'needs-checkin') {
       return mine.filter((job) => !job.checkinTime && job.status !== 'completed');
@@ -1757,7 +1747,7 @@ function JobsPage({ token, user }) {
       return mine.filter((job) => job.checkoutTime || job.status === 'completed');
     }
     return mine.filter((job) => job.status !== 'completed');
-  }, [isTechnician, jobs, techQuickFilter, user.username]);
+  }, [canSelfServeAssignedJobs, jobs, techQuickFilter, user.username]);
 
   useEffect(() => {
     if (!drilldown.active || !drilldown.jobId) return;
@@ -2244,7 +2234,7 @@ function JobsPage({ token, user }) {
         </div>
       ) : null}
 
-      {isTechnician ? (
+      {canSelfServeAssignedJobs ? (
         <div className="tech-quick-panel">
           <div className="tech-quick-header">
             <strong>Technician Quick Actions</strong>
@@ -2597,7 +2587,7 @@ function JobsPage({ token, user }) {
                     </div>
                   )}
 
-                  {(canManageJobs || (isTechnician && job.assignedTo === user.username)) ? (
+                  {(canManageJobs || (canSelfServeAssignedJobs && job.assignedTo === user.username)) ? (
                     <div className="customer-update-controls">
                       <span className="photo-upload-title">Inventory Reservation</span>
                       <div className="photo-upload-row">
@@ -2765,7 +2755,7 @@ function JobsPage({ token, user }) {
                   ) : null}
 
                   <div className="job-action-buttons">
-                    {(canManageJobs || (isTechnician && job.assignedTo === user.username)) ? (
+                    {(canManageJobs || (canSelfServeAssignedJobs && job.assignedTo === user.username)) ? (
                       <div className="customer-update-controls">
                         <span className="photo-upload-title">Customer Update</span>
                         <div className="photo-upload-row">
@@ -2883,7 +2873,7 @@ function JobsPage({ token, user }) {
                 </div>
               )}
 
-              {isTechnician && job.assignedTo === user.username && (
+              {canSelfServeAssignedJobs && job.assignedTo === user.username && (
                 <div className="tech-actions">
                   {!job.checkinTime && job.status !== 'completed' && (
                     <button
@@ -3714,9 +3704,6 @@ export default function App() {
     persistClientAuth(null);
   }, [persistClientAuth]);
 
-  const canManageCustomers = hasFrontendPermission(auth?.user, 'customers.manage');
-  const canManageAccounts = hasFrontendPermission(auth?.user, 'accounts.manage');
-  const canViewExports = hasFrontendPermission(auth?.user, 'exports.view');
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const navSections = useMemo(() => {
@@ -3733,49 +3720,24 @@ export default function App() {
       ];
     }
 
-    const sections = [
-      {
-        title: 'Main',
-        links: [
-          { to: '/dashboard', label: 'Dashboard' },
-          { to: '/jobs', label: 'Jobs' },
-          { to: '/schedule', label: 'Schedule' },
-        ],
-      },
-    ];
+    return APP_NAV_SECTIONS.map((section) => ({
+      ...section,
+      links: section.links.map((link) => {
+        const allowed = hasFrontendPermission(auth?.user, link.permission);
+        return {
+          ...link,
+          allowed,
+          requiredPermission: link.permission || '',
+          reason: allowed ? '' : capabilityTooltip(link.permission),
+        };
+      }),
+    })).filter((section) => section.links.length > 0);
+  }, [isAuthed, auth?.user]);
 
-    if (canManageCustomers) {
-      sections.push({
-        title: 'Operations',
-        links: [
-          { to: '/customers', label: 'Customers' },
-          { to: '/invoices', label: 'Invoices' },
-          { to: '/activity', label: 'Activity' },
-          { to: '/projects', label: 'Projects' },
-          { to: '/project-planner', label: 'Planner' },
-          { to: '/team', label: 'Team' },
-        ],
-      });
-
-      const toolsLinks = [
-        { to: '/inventory', label: 'Inventory' },
-        { to: '/equipment', label: 'Equipment' },
-        { to: '/quotes', label: 'Quotes' },
-        { to: '/recurring', label: 'Recurring' },
-      ];
-      if (canViewExports) toolsLinks.push({ to: '/export', label: 'Export' });
-      sections.push({ title: 'Tools', links: toolsLinks });
-    }
-
-    if (canManageAccounts) {
-      sections.push({
-        title: 'Admin',
-        links: [{ to: '/users', label: 'Users' }],
-      });
-    }
-
-    return sections;
-  }, [isAuthed, canManageCustomers, canManageAccounts, canViewExports]);
+  const hasRestrictedNavLinks = useMemo(
+    () => navSections.some((section) => section.links.some((link) => link.allowed === false)),
+    [navSections],
+  );
   useEffect(() => {
     setMobileNavOpen(false);
   }, [location.pathname]);
@@ -3867,13 +3829,28 @@ export default function App() {
               <div key={section.title} className="side-nav-section">
                 <p className="side-nav-title">{section.title}</p>
                 {section.links.map((link) => (
-                  <NavLink key={link.to} to={link.to} end={Boolean(link.end)} className="side-nav-link" title={link.label}>
-                    <span className="side-nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
-                    <span className="side-nav-link-label">{link.label}</span>
-                  </NavLink>
+                  link.allowed === false ? (
+                    <span
+                      key={link.to}
+                      className="side-nav-link side-nav-link-disabled"
+                      title={link.reason}
+                      aria-disabled="true"
+                    >
+                      <span className="side-nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
+                      <span className="side-nav-link-label">{link.label}</span>
+                    </span>
+                  ) : (
+                    <NavLink key={link.to} to={link.to} end={Boolean(link.end)} className="side-nav-link" title={link.label}>
+                      <span className="side-nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
+                      <span className="side-nav-link-label">{link.label}</span>
+                    </NavLink>
+                  )
                 ))}
               </div>
             ))}
+            {hasRestrictedNavLinks ? (
+              <p className="side-nav-capability-hint">Disabled links show required capability details.</p>
+            ) : null}
           </nav>
         </aside>
       ) : null}
@@ -3894,13 +3871,26 @@ export default function App() {
             <div key={section.title} className="mobile-nav-section">
               <p className="mobile-nav-title">{section.title}</p>
               {section.links.map((link) => (
-                <NavLink key={link.to} to={link.to} end={Boolean(link.end)} onClick={() => setMobileNavOpen(false)} className="nav-link-with-icon">
-                  <span className="nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
-                  <span>{link.label}</span>
-                </NavLink>
+                link.allowed === false ? (
+                  <div key={link.to} className="mobile-nav-link-disabled" title={link.reason} aria-disabled="true">
+                    <span className="nav-link-with-icon">
+                      <span className="nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
+                      <span>{link.label}</span>
+                    </span>
+                    <small>{link.reason}</small>
+                  </div>
+                ) : (
+                  <NavLink key={link.to} to={link.to} end={Boolean(link.end)} onClick={() => setMobileNavOpen(false)} className="nav-link-with-icon">
+                    <span className="nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
+                    <span>{link.label}</span>
+                  </NavLink>
+                )
               ))}
             </div>
           ))}
+          {hasRestrictedNavLinks ? (
+            <p className="mobile-nav-capability-hint">Disabled links include the capability required for access.</p>
+          ) : null}
         </nav>
         {isAuthed ? (
           <div className="mobile-nav-account">
