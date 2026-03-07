@@ -35,7 +35,7 @@ Do not put `SUPABASE_SERVICE_ROLE_KEY` in Netlify.
 5. Start command: `npm start`.
 6. Add required env vars and deploy.
 
-Optional: this repo includes [render.yaml](/d:/Web App/app2-field-service-suite/render.yaml) for Blueprint-style setup.
+Optional: this repo includes [render.yaml](./render.yaml) for Blueprint-style setup.
 
 ### Netlify
 
@@ -46,7 +46,7 @@ Optional: this repo includes [render.yaml](/d:/Web App/app2-field-service-suite/
 5. Publish directory: `build`.
 6. Add `REACT_APP_API_BASE_URL` env var and deploy.
 
-Optional: this repo includes [netlify.toml](/d:/Web App/app2-field-service-suite/netlify.toml).
+Optional: this repo includes [netlify.toml](./netlify.toml).
 
 ## Pre-Deploy Checklist
 
@@ -66,8 +66,8 @@ Deploy only if this passes.
 
 Use live Netlify + Render URLs and verify:
 
-1. Staff login (`admin / 1111`)
-2. Client login
+1. Staff login (`admin / 1111`, `manager / 1111`, `dispatcher / 1111`, `technician / 1111`)
+2. Client login (`contact@acme.com / client`)
 3. Add task from Projects modal
 4. Notifications panel open/create/read
 5. Client portal loads jobs/invoices

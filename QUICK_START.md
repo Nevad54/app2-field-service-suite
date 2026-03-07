@@ -89,4 +89,4 @@ Use `Tools` menu for:
 
 ## 7. Detailed Guide
 
-For full instructions, see [USER_MANUAL.md](/d:/Web App/app2-field-service-suite/USER_MANUAL.md).
+For full instructions, see [USER_MANUAL.md](./USER_MANUAL.md).

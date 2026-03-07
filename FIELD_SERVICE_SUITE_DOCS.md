@@ -1,141 +1,80 @@
-﻿# Field Service Suite - Complete Documentation
+# Field Service Suite Documentation Snapshot
 
-## Project Structure
-app2-field-service-suite/
-├── backend/           # Express.js API (Port 3002)
-│   └── server.js     # API routes, middleware, in-memory data
-├── frontend/         # React 18 App (Port 3001)
-│   ├── src/
-│   │   ├── App.js           # Main app with routing & auth
-│   │   ├── styles.css       # CSS (light/dark theme)
-│   │   ├── ProjectsPage.js  # Projects & tasks CRUD
-│   │   └── ProjectPlanner.js # Spreadsheet-style planner
-│   └── public/index.html
-└── docs/
+This file is a compact product and API snapshot aligned with the current implementation.
 
+For active delivery history and validation logs, use [ROADMAP_AND_PROGRESS.md](./ROADMAP_AND_PROGRESS.md).
+For setup and day-to-day commands, use [README.md](./README.md).
 
-## How It Works
-- **Frontend**: React 18 with React Router for navigation
-- **Backend**: Express.js REST API
-- **Data**: In-memory storage (demo mode)
-- **Auth**: JWT tokens in localStorage
+## Product Summary
 
-## 4 User Roles
-| Role | Access |
-|------|--------|
-| Admin | Full access |
-| Dispatcher | Schedule jobs, manage technicians |
-| Technician | View/update assigned jobs |
-| Client | View own jobs via portal |
+Field Service Suite is a React + Express platform for field operations with:
 
-## Main Routes
-- /login - Authentication
-- /dashboard - Stats overview
-- /jobs - Work orders
-- /schedule - Calendar view
-- /customers - Customer database
-- /invoices - Invoice tracking
-- /activity - Activity log
-- /projects - Project management
-- /project-planner - Task timeline/spreadsheet
-- /client-portal - Client self-service
+- job lifecycle execution (check-in, checkout, quick-close)
+- dispatch planning, optimization, and deadline-risk visibility
+- recurring maintenance workflows
+- quotes, invoices, customers, projects, and planner workflows
+- inventory reservation/consumption support linked to jobs
+- staff and customer portal auth separation
+- role/capability-based access controls with account lifecycle enforcement
 
-## API Endpoints
+## Runtime Overview
 
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /api/auth/login | User login |
-| GET | /api/auth/me | Get current user |
-| POST | /api/auth/logout | User logout |
+- Frontend: `http://localhost:3001`
+- Backend: `http://localhost:3002`
+- Health check: `GET /api/status`
+- Backend entry: `backend/server-supabase.js`
 
-### Dashboard
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/dashboard/summary | Get dashboard statistics |
+## Authentication and Roles
 
-### Jobs
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/jobs | List all jobs |
-| POST | /api/jobs | Create new job |
-| PUT | /api/jobs/:id | Update job |
-| PATCH | /api/jobs/:id/status | Update job status |
+- Staff login: `POST /api/auth/login`
+- Client login: `POST /api/client/login`
+- Auth profile: `GET /api/auth/me`
+- Capability payload: `GET /api/auth/capabilities`
 
-### Customers
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/customers | List customers |
-| POST | /api/customers | Create customer |
-| PUT | /api/customers/:id | Update customer |
-| DELETE | /api/customers/:id | Delete customer |
+Roles:
 
-### Invoices
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/invoices | List invoices |
-| POST | /api/invoices | Create invoice |
-| PUT | /api/invoices/:id | Update invoice |
+- `admin`
+- `manager`
+- `dispatcher`
+- `technician`
+- `client`
 
-### Projects
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/projects | List projects |
-| POST | /api/projects | Create project |
-| PUT | /api/projects/:id | Update project |
-| DELETE | /api/projects/:id | Delete project |
+Account statuses:
 
-### Tasks
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | /api/projects/:id/tasks | List project tasks |
-| POST | /api/projects/:id/tasks | Create task |
-| PUT | /api/tasks/:id | Update task |
-| DELETE | /api/tasks/:id | Delete task |
+- `active`
+- `disabled`
+- `locked`
+- `invited`
 
-## Demo Accounts
-| Username | Password | Role |
-|----------|----------|------|
-| admin | 1111 | Admin |
-| dispatcher | 1111 | Dispatcher |
-| technician | 1111 | Technician |
-| client | 1111 | Client |
+## Key API Areas
 
-## Running the Application
+- Auth and capabilities: `/api/auth/*`, `/api/client/*`
+- Jobs and execution: `/api/jobs/*`
+- Schedule and dispatch: `/api/schedule`, `/api/settings/dispatch`, `/api/dispatch/optimize*`
+- Dashboard metrics: `/api/dashboard/*`
+- Recurring maintenance: `/api/recurring*`
+- Projects/planner/tasks: `/api/projects*`, `/api/tasks*`
+- Quotes and conversion: `/api/quotes*`
+- Inventory and equipment: `/api/inventory*`, `/api/equipment*`
+- Team and user administration: `/api/technicians*`, `/api/users*`
 
-### Installation
-bash
-npm run install:all
+## Demo Credentials
 
+Staff login (`/login`):
 
-### Start Development
-bash
-npm run dev
+- `admin / 1111`
+- `manager / 1111`
+- `dispatcher / 1111`
+- `technician / 1111`
 
+Client login (`/client-login`):
 
-Or separately:
-bash
-# Terminal 1 - Backend
-cd backend && node server.js
+- `contact@acme.com / client`
 
-# Terminal 2 - Frontend
-cd frontend && npm start
+## Validation and CI
 
-
-### Access Points
-- **Frontend**: http://localhost:3001
-- **Backend API**: http://localhost:3002/api/status
-
-## Technology Stack
-| Layer | Technology |
-|-------|------------|
-| Frontend | React 18, React Router 6 |
-| Styling | CSS3 with Variables |
-| Backend | Express.js |
-| Auth | JWT (JSON Web Tokens) |
-| Data | In-memory (demo) |
-
-## UI Changes Made
-- Updated ProjectPlanner.js with datetime-local inputs for task scheduling
-- Added plannedStart and plannedEnd fields for precise scheduling
-- App is running successfully at http://localhost:3001
+- Backend API regression: `npm run test:api`
+- Frontend E2E: `npm run test:e2e`
+- Frontend build: `npm run build`
+- CI pipeline: `.github/workflows/ci-e2e.yml`
+- Quality policy: `docs/QUALITY_GATES.md`

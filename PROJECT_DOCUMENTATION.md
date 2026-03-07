@@ -1,212 +1,96 @@
-# Field Service Suite - Complete Project Documentation
+# Field Service Suite Project Documentation
 
-## 1. Project Structure
+## 1. Scope
 
-```text
-app2-field-service-suite/
-+-- backend/                     # Express.js API (port 3002)
-|   +-- package.json
-|   +-- package-lock.json
-|   \-- server.js               # Auth, jobs, projects, planner, attendance APIs
-+-- frontend/                    # React 18 app (port 3001)
-|   +-- package.json
-|   +-- public/
-|   |   \-- index.html
-|   \-- src/
-|       +-- App.js              # Routing, auth state, role-based UI
-|       +-- styles.css          # Theme + planner timeline styles
-|       +-- ProjectsPage.js     # Project + task management
-|       \-- ProjectPlanner.js   # Time-based hourly planner + attendance controls
-+-- FIELD_SERVICE_SUITE_DOCS.md
-+-- PROJECT_DOCUMENTATION.md
-\-- docs/
-```
+Field Service Suite is an operations platform for service teams to plan, dispatch, execute, and close work with capability-based authorization and customer portal support.
 
-## 2. Architecture
+## 2. Current Baseline (2026-03-08)
 
-- Frontend: React 18 with React Router 6.
-- Backend: Express.js REST API.
-- Data: In-memory collections (demo mode fallback).
-- Auth: bearer token session model (`/api/auth/login` returns token, stored in `localStorage`).
-- Scheduling model: centralized planner where tasks belong to projects.
+- Sprint 1 through Sprint 5 planned scope is implemented.
+- Roles/accounts governance phases 1 through 10 are implemented.
+- Next planned increment is phase 11 (remaining disabled-with-reason UX alignment and capability payload contract checks).
 
-## 3. User Roles
+Reference: `ROADMAP_AND_PROGRESS.md`
 
-| Role | Access |
-|------|--------|
-| Admin | Full access, schedule + attendance control |
-| Dispatcher | Schedule + attendance control |
-| Technician | View tasks, attendance actions on assigned tasks |
-| Client | Read-only client portal (own jobs + invoices) |
+## 3. Architecture
 
-## 4. Main Frontend Routes
+- Frontend: React 18 app (`frontend/`)
+- Backend: Express API in Supabase-oriented runtime (`backend/server-supabase.js`)
+- Root orchestration: `npm run dev` (frontend + backend)
+- Startup helper: `start-app.ps1`
 
-- `/login`
-- `/dashboard`
-- `/jobs`
-- `/schedule`
-- `/customers`
-- `/invoices`
-- `/activity`
-- `/projects`
-- `/project-planner`
-- `/project-planner/:projectId`
-- `/client-portal`
+## 4. Auth and Authorization Model
 
-## 5. Planner Task Model
+- Staff auth endpoint: `POST /api/auth/login`
+- Client auth endpoint: `POST /api/client/login`
+- Auth context endpoint: `GET /api/auth/me`
+- Capability endpoint: `GET /api/auth/capabilities`
+- Backend access control: permission middleware (`requirePermission(...)`)
+- Frontend access control: capability-based route and action gating
+- Account lifecycle enforcement: `active`, `disabled`, `locked`, `invited`
 
-```js
-{
-  id: string,
-  projectId: string,
-  name: string,
-  assignedUserId: string,
+## 5. Core Functional Areas
 
-  plannedStart: ISODateString,
-  plannedEnd: ISODateString,
+- Jobs, check-in/check-out, quick-close, completion proof
+- Dispatch settings and optimization recommendations
+- Dashboard KPIs and deadline risk visibility
+- Recurring maintenance management
+- Inventory reservation and consumption on completion
+- Quotes lifecycle and quote-to-job conversion
+- Customer, invoice, activity, team, equipment, project, and planner management
+- Customer portal for scoped jobs/invoices access
 
-  actualStart: ISODateString | null,
-  actualEnd: ISODateString | null,
+## 6. Local Development
 
-  status: "scheduled" | "in_progress" | "paused" | "completed",
+Install:
 
-  // returned in enhanced API payloads
-  plannedDurationHours: number,
-  actualDurationHours: number,
-  varianceHours: number | null
-}
-```
-
-## 6. API Endpoints
-
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/login` | Login and return token + user |
-| GET | `/api/auth/me` | Resolve current user from token |
-| POST | `/api/auth/logout` | Logout current token |
-
-### Dashboard
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/dashboard/summary` | Dashboard stats |
-
-### Jobs
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/jobs` | List jobs |
-| POST | `/api/jobs` | Create job |
-| PUT | `/api/jobs/:id` | Update job |
-| PATCH | `/api/jobs/:id/status` | Update job status |
-| POST | `/api/jobs/:id/checkin` | Technician check-in |
-| POST | `/api/jobs/:id/checkout` | Technician check-out |
-| PATCH | `/api/jobs/:id/notes` | Update notes |
-| POST | `/api/jobs/:id/photos` | Add photo |
-| DELETE | `/api/jobs/:id/photos` | Remove photo |
-
-### Customers
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/customers` | List customers |
-| POST | `/api/customers` | Create customer |
-| PUT | `/api/customers/:id` | Update customer |
-| DELETE | `/api/customers/:id` | Delete customer |
-
-### Invoices
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/invoices` | List invoices |
-| POST | `/api/invoices` | Create invoice |
-| PATCH | `/api/invoices/:id/status` | Update invoice status |
-| GET | `/api/invoices/:id/pdf` | Generate invoice PDF |
-
-### Projects and Planner
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/projects` | List projects |
-| POST | `/api/projects` | Create project |
-| PUT | `/api/projects/:id` | Update project |
-| DELETE | `/api/projects/:id` | Delete project |
-| GET | `/api/projects/:projectId/tasks` | List enhanced project tasks |
-| GET | `/api/projects/:projectId/timeline` | Timeline payload + window |
-| POST | `/api/projects/:projectId/tasks` | Create task with planned range |
-| PUT | `/api/tasks/:id` | Update task |
-| PATCH | `/api/tasks/:id/dates` | Update task planned range |
-| PATCH | `/api/tasks/:id/progress` | Update task progress |
-| DELETE | `/api/tasks/:id` | Delete task |
-| GET | `/api/tasks/:id/activity` | Task activity log |
-
-### Attendance Endpoints
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/tasks/:id/start` | Set `actualStart=now`, status `in_progress` |
-| POST | `/api/tasks/:id/pause` | Set status `paused` |
-| POST | `/api/tasks/:id/resume` | Set status `in_progress` |
-| POST | `/api/tasks/:id/finish` | Set `actualEnd=now`, status `completed` |
-
-## 7. Validation and Access Rules
-
-- `plannedStart` and `plannedEnd` are required for planner tasks.
-- `plannedStart` must be before `plannedEnd`.
-- Attendance updates are allowed only for:
-  - `admin` or `dispatcher`, or
-  - assigned technician (`assignedUserId` match).
-- Soft warning is attached when `actualStart` is earlier than `plannedStart`.
-
-## 8. Planner UX Behavior
-
-- Excel-like horizontal hourly timeline (`HOUR_WIDTH` fixed unit).
-- Timeline covers past + future and auto-expands near scroll edges.
-- Current time vertical indicator line.
-- Task bars positioned by planned time and width.
-- Visual states: scheduled, in-progress, paused, completed.
-- Per-task attendance buttons by status:
-  - scheduled: Start
-  - in_progress: Pause, Finish
-  - paused: Resume, Finish
-  - completed: read-only
-- Optimistic UI updates with rollback on API failure.
-
-## 9. Demo Accounts
-
-| Username | Password | Role |
-|----------|----------|------|
-| admin | 1111 | Admin |
-| dispatcher | 1111 | Dispatcher |
-| technician | 1111 | Technician |
-| client | 1111 | Client |
-
-## 10. Running the App
-
-### Install
 ```bash
 npm run install:all
 ```
 
-### Start
+Run:
+
 ```bash
 npm run dev
 ```
 
-Or separately:
-```bash
-# Terminal 1
-cd backend && node server.js
+or:
 
-# Terminal 2
-cd frontend && npm start
+```powershell
+.\start-app.ps1
 ```
 
-### Access
+Endpoints:
+
 - Frontend: `http://localhost:3001`
-- Backend status: `http://localhost:3002/api/status`
+- Backend: `http://localhost:3002`
+- Status: `http://localhost:3002/api/status`
 
-## 11. Technology Stack
+## 7. Testing and Release Gates
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | React 18, React Router 6 |
-| Styling | CSS variables + custom timeline styles |
-| Backend | Express.js |
-| Auth | Bearer token session model |
-| Data | In-memory fallback |
+- Frontend build: `npm run build`
+- Backend API regression: `npm run test:api`
+- Frontend E2E: `npm run test:e2e`
+- Headed E2E: `npm run test:e2e:headed`
+- Flaky trend report: `npm run test:e2e:flaky-report`
+
+CI workflow:
+
+- `.github/workflows/ci-e2e.yml`
+
+Release gate policy:
+
+- `docs/QUALITY_GATES.md`
+
+## 8. Demo Credentials
+
+Staff login (`/login`):
+
+- `admin / 1111`
+- `manager / 1111`
+- `dispatcher / 1111`
+- `technician / 1111`
+
+Client login (`/client-login`):
+
+- `contact@acme.com / client`

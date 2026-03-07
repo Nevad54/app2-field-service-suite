@@ -1,6 +1,6 @@
 # Field Service Suite User Manual
 
-This manual is for daily users of the app: Admin, Dispatcher, Technician, and Client.
+This manual is for daily users of the app: Admin, Manager, Dispatcher, Technician, and Client.
 
 ## 1. Accessing the App
 
@@ -15,13 +15,15 @@ This manual is for daily users of the app: Admin, Dispatcher, Technician, and Cl
 - Use your username and password.
 - Demo accounts (if enabled):
   - `admin / 1111`
+  - `manager / 1111`
   - `dispatcher / 1111`
   - `technician / 1111`
-  - `client / 1111`
 
 ### Client Login
 
 - Use customer email in Client Portal.
+- Demo client login:
+  - `contact@acme.com / client`
 - After login, clients can see only their own jobs and invoices.
 
 ## 3. Navigation Overview
@@ -50,6 +52,11 @@ Main pages for staff:
 ### Dispatcher
 
 - Can manage jobs, customers, projects/tasks, team, inventory, equipment, quotes, invoices, notifications.
+
+### Manager
+
+- Can manage day-to-day operations similarly to dispatcher.
+- Cannot perform admin-only account governance actions.
 
 ### Technician
 

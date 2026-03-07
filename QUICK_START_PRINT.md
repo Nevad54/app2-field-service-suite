@@ -106,5 +106,5 @@ If something fails:
 
 See:
 
-1. [QUICK_START.md](/d:/Web App/app2-field-service-suite/QUICK_START.md)
-2. [USER_MANUAL.md](/d:/Web App/app2-field-service-suite/USER_MANUAL.md)
+1. [QUICK_START.md](./QUICK_START.md)
+2. [USER_MANUAL.md](./USER_MANUAL.md)
