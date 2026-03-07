@@ -60,7 +60,7 @@ body {
 .app-shell { min-height: 100vh; width: 100%; overflow-x: hidden; }
 .main { max-width: 1200px; margin: 0 auto; padding: 32px 20px; }
 .app-layout { display: flex; min-height: calc(100vh - 64px); }
-.main-with-sidebar { flex: 1; max-width: none; margin: 0; margin-left: 64px; }
+.main-with-sidebar { flex: 1; max-width: none; margin: 0; margin-left: 320px; }
 .desktop-only { display: block; }
 
 /* Topbar */
@@ -137,7 +137,7 @@ body {
 
 /* Desktop side navigation */
 .side-nav-shell {
-  width: 64px;
+  width: 320px;
   position: fixed;
   top: 64px;
   left: 0;
@@ -181,24 +181,17 @@ body {
   border-color: var(--border);
 }
 .side-nav-panel {
-  width: 240px;
+  width: 256px;
   border-left: 1px solid var(--border);
   padding: 18px 12px;
   overflow-y: auto;
   -ms-overflow-style: none;
   scrollbar-width: none;
-  transform: translateX(-100%);
-  opacity: 0;
-  transition: transform 0.2s ease, opacity 0.2s ease;
-  pointer-events: none;
-}
-.side-nav-panel::-webkit-scrollbar { width: 0; height: 0; }
-.side-nav-shell:hover .side-nav-panel,
-.side-nav-shell:focus-within .side-nav-panel {
-  transform: translateX(0);
+  transform: none;
   opacity: 1;
   pointer-events: auto;
 }
+.side-nav-panel::-webkit-scrollbar { width: 0; height: 0; }
 .side-nav-links { display: flex; flex-direction: column; gap: 14px; }
 .side-nav-section { display: flex; flex-direction: column; gap: 4px; }
 .side-nav-title { font-size: 0.72rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-muted); padding: 0 10px; }
@@ -1016,11 +1009,11 @@ textarea:focus-visible {
 /* Responsive */
 
 @media (max-width: 1024px) {
-  .side-nav-shell { width: 56px; }
+  .side-nav-shell { width: 280px; }
   .side-nav-rail { width: 56px; padding: 10px 6px; }
   .side-nav-rail-link { width: 42px; height: 42px; }
-  .side-nav-panel { width: 220px; }
-  .main-with-sidebar { margin-left: 56px; }
+  .side-nav-panel { width: 224px; }
+  .main-with-sidebar { margin-left: 280px; }
   .main { padding: 20px 16px; }
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
   .items-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
