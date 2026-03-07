@@ -3366,8 +3366,21 @@ function ExportPage({ token, user }) {
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
+      const contentDisposition = String(response.headers.get('content-disposition') || '');
+      const fileNameStarMatch = contentDisposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i);
+      const fileNameMatch = contentDisposition.match(/filename\s*=\s*"?([^\";]+)"?/i);
+      let fileName = '';
+      if (fileNameStarMatch && fileNameStarMatch[1]) {
+        try {
+          fileName = decodeURIComponent(fileNameStarMatch[1].trim());
+        } catch (_) {
+          fileName = fileNameStarMatch[1].trim();
+        }
+      } else if (fileNameMatch && fileNameMatch[1]) {
+        fileName = fileNameMatch[1].trim();
+      }
       a.href = url;
-      a.download = `${type}-export-${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = fileName || `${type}-export-${new Date().toISOString().split('T')[0]}.csv`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);

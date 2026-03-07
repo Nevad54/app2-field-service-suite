@@ -428,7 +428,7 @@ export default function TeamPage({ token }) {
   );
 }
   const normalizeTechnicianStatus = (status) => {
-    const value = String(status || '').trim().toLowerCase().replace('-', '_').replace(' ', '_');
+    const value = String(status || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
     if (value === 'active' || value === 'on_leave' || value === 'unavailable') return value;
     return 'unknown';
   };

@@ -513,6 +513,29 @@ const requirePermission = (permission) => (req, res, next) => {
     return next();
 };
 
+const normalizeTechnicianStatus = (status) => {
+    const value = String(status || '').trim().toLowerCase().replace(/[-\s]+/g, '_');
+    if (value === 'active' || value === 'on_leave' || value === 'unavailable') return value;
+    return 'active';
+};
+
+const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
+
+const csvValue = (value) => {
+    if (value === null || value === undefined) return '';
+    const raw = String(value);
+    if (/[",\n]/.test(raw)) {
+        return `"${raw.replace(/"/g, '""')}"`;
+    }
+    return raw;
+};
+
+const toCsv = (rows, columns) => {
+    const header = columns.map((col) => csvValue(col.label)).join(',');
+    const lines = (rows || []).map((row) => columns.map((col) => csvValue(row[col.key])).join(','));
+    return [header, ...lines].join('\n');
+};
+
 const logActivity = async (entityType, entityId, userId, action, description) => {
     const newLog = {
         id: `act-${Date.now()}`,
@@ -1971,8 +1994,8 @@ const startServer = async () => {
 
         const newTechnician = {
             id: `tech-${Date.now()}`,
-            name,
-            email: email || '',
+            name: String(name).trim(),
+            email: normalizeEmail(email),
             phone: phone || '',
             skills: skills || [],
             hourly_rate: hourly_rate || 50,
@@ -1986,7 +2009,7 @@ const startServer = async () => {
                 saturday: null,
                 sunday: null
             },
-            status: status || 'active',
+            status: normalizeTechnicianStatus(status),
             color: color || '#0ea5e9',
             hire_date: hire_date || null,
             notes: notes || '',
@@ -2008,14 +2031,14 @@ const startServer = async () => {
         const { name, email, phone, skills, hourly_rate, certifications, availability, status, color, hire_date, notes } = req.body;
         const technician = { ...memoryCache.technicians[index] };
 
-        if (name) technician.name = name;
-        if (email !== undefined) technician.email = email;
+        if (name) technician.name = String(name).trim();
+        if (email !== undefined) technician.email = normalizeEmail(email);
         if (phone !== undefined) technician.phone = phone;
         if (skills) technician.skills = skills;
         if (hourly_rate !== undefined) technician.hourly_rate = hourly_rate;
         if (certifications) technician.certifications = certifications;
         if (availability) technician.availability = availability;
-        if (status) technician.status = status;
+        if (status !== undefined) technician.status = normalizeTechnicianStatus(status);
         if (color) technician.color = color;
         if (hire_date !== undefined) technician.hire_date = hire_date;
         if (notes !== undefined) technician.notes = notes;
@@ -2521,21 +2544,23 @@ Thank you for your business!
             };
         });
 
-        if (rows.length === 0) {
-            return res.status(200).send('No jobs to export');
-        }
-
-        const headers = Object.keys(rows[0]);
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => headers.map(h => {
-                const val = String(row[h] || '').replace(/"/g, '""');
-                return `"${val}"`;
-            }).join(','))
-        ].join('\n');
+        const csvContent = toCsv(rows, [
+            { key: 'id', label: 'Job ID' },
+            { key: 'title', label: 'Title' },
+            { key: 'status', label: 'Status' },
+            { key: 'priority', label: 'Priority' },
+            { key: 'category', label: 'Category' },
+            { key: 'location', label: 'Location' },
+            { key: 'customer', label: 'Customer' },
+            { key: 'assignedTo', label: 'Assigned To' },
+            { key: 'scheduledDate', label: 'Scheduled Date' },
+            { key: 'created_at', label: 'Created At' },
+            { key: 'updated_at', label: 'Updated At' },
+            { key: 'notes', label: 'Notes' },
+        ]);
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', 'attachment; filename="jobs-export.csv"');
+        res.setHeader('Content-Disposition', `attachment; filename="jobs-export-${new Date().toISOString().slice(0, 10)}.csv"`);
         res.send(csvContent);
     });
 
@@ -2550,21 +2575,18 @@ Thank you for your business!
             updated_at: customer.updated_at || '',
         }));
 
-        if (rows.length === 0) {
-            return res.status(200).send('No customers to export');
-        }
-
-        const headers = Object.keys(rows[0]);
-        const csvContent = [
-            headers.join(','),
-            ...rows.map(row => headers.map(h => {
-                const val = String(row[h] || '').replace(/"/g, '""');
-                return `"${val}"`;
-            }).join(','))
-        ].join('\n');
+        const csvContent = toCsv(rows, [
+            { key: 'id', label: 'Customer ID' },
+            { key: 'name', label: 'Name' },
+            { key: 'email', label: 'Email' },
+            { key: 'phone', label: 'Phone' },
+            { key: 'address', label: 'Address' },
+            { key: 'created_at', label: 'Created At' },
+            { key: 'updated_at', label: 'Updated At' },
+        ]);
 
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', 'attachment; filename="customers-export.csv"');
+        res.setHeader('Content-Disposition', `attachment; filename="customers-export-${new Date().toISOString().slice(0, 10)}.csv"`);
         res.send(csvContent);
     });
 

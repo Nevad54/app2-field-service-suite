@@ -721,3 +721,81 @@ test('Dashboard KPI endpoint returns SLA and operational metrics', async () => {
   assert.equal(typeof kpis.payload.operations.avgResolutionHours, 'number');
   assert.equal(typeof kpis.payload.backlog.unassignedOpen, 'number');
 });
+
+test('Export endpoints return CSV and enforce exports.view permission', async () => {
+  const managerExport = await fetch(`${BASE_URL}/api/export/jobs`, {
+    headers: { Authorization: `Bearer ${managerToken}` },
+  });
+  assert.equal(managerExport.status, 200, 'Manager should be able to export jobs');
+  assert.match(
+    String(managerExport.headers.get('content-type') || ''),
+    /text\/csv/i,
+    'Jobs export should return CSV content type'
+  );
+  assert.match(
+    String(managerExport.headers.get('content-disposition') || ''),
+    /jobs-export-.*\.csv/i,
+    'Jobs export should include CSV filename in content disposition'
+  );
+  const jobsCsv = await managerExport.text();
+  const firstJobsLine = String(jobsCsv).split('\n')[0];
+  assert.match(firstJobsLine, /Job ID,Title,Status,Priority/, 'Jobs export should include CSV header row');
+
+  const customersExport = await fetch(`${BASE_URL}/api/export/customers`, {
+    headers: { Authorization: `Bearer ${managerToken}` },
+  });
+  assert.equal(customersExport.status, 200, 'Manager should be able to export customers');
+  assert.match(
+    String(customersExport.headers.get('content-type') || ''),
+    /text\/csv/i,
+    'Customers export should return CSV content type'
+  );
+  const customersCsv = await customersExport.text();
+  const firstCustomersLine = String(customersCsv).split('\n')[0];
+  assert.match(firstCustomersLine, /Customer ID,Name,Email,Phone/, 'Customers export should include CSV header row');
+
+  const techLogin = await api('/api/auth/login', {
+    method: 'POST',
+    body: { username: 'technician', password: '1111' },
+  });
+  assert.equal(techLogin.status, 200, 'Technician login should succeed for permission check');
+
+  const techExport = await fetch(`${BASE_URL}/api/export/jobs`, {
+    headers: { Authorization: `Bearer ${techLogin.payload.token}` },
+  });
+  assert.equal(techExport.status, 403, 'Technician should not be able to export jobs');
+});
+
+test('Technician create/update normalizes email and status', async () => {
+  const created = await api('/api/technicians', {
+    method: 'POST',
+    token: adminToken,
+    body: {
+      name: `Norm Tech ${Date.now()}`,
+      email: '  TECH-NORM@Example.COM  ',
+      status: 'on leave',
+      skills: ['HVAC'],
+    },
+  });
+  assert.equal(created.status, 201, 'Technician creation should succeed');
+  assert.equal(created.payload.email, 'tech-norm@example.com', 'Email should be trimmed/lowercased');
+  assert.equal(created.payload.status, 'on_leave', 'Status should normalize to on_leave');
+
+  const updated = await api(`/api/technicians/${encodeURIComponent(created.payload.id)}`, {
+    method: 'PUT',
+    token: adminToken,
+    body: {
+      email: '  TECH-NORM-UPDATED@Example.COM ',
+      status: ' unavailable ',
+    },
+  });
+  assert.equal(updated.status, 200, 'Technician update should succeed');
+  assert.equal(updated.payload.email, 'tech-norm-updated@example.com', 'Updated email should be normalized');
+  assert.equal(updated.payload.status, 'unavailable', 'Updated status should normalize to unavailable');
+
+  const cleanup = await api(`/api/technicians/${encodeURIComponent(created.payload.id)}`, {
+    method: 'DELETE',
+    token: adminToken,
+  });
+  assert.equal(cleanup.status, 200, 'Created technician should be removable');
+});
