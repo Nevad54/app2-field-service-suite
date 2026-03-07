@@ -1420,7 +1420,29 @@ function SchedulePage({ token, user }) {
           </div>
           <p className="hint">Jobs inside this due-soon window are flagged as deadline risks.</p>
         </form>
-      ) : null}
+      ) : (
+        <div className="dispatch-settings">
+          <div className="dispatch-settings-grid">
+            <label>
+              Max jobs per technician/day
+              <input type="number" value={normalizedDispatchSettings.maxJobsPerTechnicianPerDay} disabled />
+            </label>
+            <label>
+              Due-soon window (days)
+              <input type="number" value={normalizedDispatchSettings.slaDueSoonDays} disabled />
+            </label>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled
+              title={capabilityTooltip('dispatch.manage')}
+            >
+              Save Dispatch Rules
+            </button>
+          </div>
+          <p className="hint">{capabilityTooltip('dispatch.manage')}</p>
+        </div>
+      )}
 
       {loading ? <p className="loading">Loading schedule...</p> : null}
       {!loading && !schedule.length ? (
@@ -1587,7 +1609,23 @@ function SchedulePage({ token, user }) {
                 <p className="hint">No optimization suggestions right now.</p>
               )}
             </aside>
-          ) : null}
+          ) : (
+            <aside className="optimization-panel optimization-panel-side">
+              <div className="optimization-header">
+                <h3>Dispatch Optimization</h3>
+                <button
+                  type="button"
+                  className="btn-secondary btn-small"
+                  disabled
+                  title={capabilityTooltip('dispatch.manage')}
+                  aria-label="Refresh dispatch optimization suggestions"
+                >
+                  Refresh
+                </button>
+              </div>
+              <p className="hint">{capabilityTooltip('dispatch.manage')}</p>
+            </aside>
+          )}
         </div>
       )}
     </section>
@@ -2213,8 +2251,15 @@ function JobsPage({ token, user }) {
       <div className="page-header">
         <h1>📋 Jobs</h1>
         <div className="job-counts">
-          {canManageJobs && !showCreateForm && (
-            <button className="btn-primary btn-small" onClick={() => setShowCreateForm(true)}>+ Create Job</button>
+          {!showCreateForm && (
+            <button
+              className="btn-primary btn-small"
+              onClick={() => setShowCreateForm(true)}
+              disabled={!canManageJobs}
+              title={!canManageJobs ? capabilityTooltip('jobs.manage') : 'Create job'}
+            >
+              + Create Job
+            </button>
           )}
           <span className="count total">Total: {jobs.length}</span>
           <span className="count new">New: {jobs.filter(j => j.status === 'new').length}</span>
@@ -2466,13 +2511,13 @@ function JobsPage({ token, user }) {
                   <span className={`category-tag ${job.category}`}>{job.category}</span>
                 </div>
                 <div className="job-actions-row">
-                  {canDeleteJobs ? (
+                  {canManageJobs ? (
                     <button
                       type="button"
                       className="btn-icon btn-danger"
                       onClick={() => handleJobDelete(job.id)}
-                      title="Delete job"
-                      disabled={workingId === job.id}
+                      title={!canDeleteJobs ? capabilityTooltip('jobs.delete.any') : 'Delete job'}
+                      disabled={workingId === job.id || !canDeleteJobs}
                     >
                       Delete
                     </button>
@@ -2849,7 +2894,7 @@ function JobsPage({ token, user }) {
                       </div>
                       <span className="photo-upload-hint">Type applies to the photo you upload now.</span>
                     </div>
-                    {canDeleteJobs && (
+                    {canManageJobs && (
                       <div className="manager-job-actions">
                         <button
                           type="button"
@@ -2863,7 +2908,8 @@ function JobsPage({ token, user }) {
                           type="button"
                           className="btn-danger"
                           onClick={() => handleJobDelete(job.id)}
-                          disabled={workingId === job.id}
+                          disabled={workingId === job.id || !canDeleteJobs}
+                          title={!canDeleteJobs ? capabilityTooltip('jobs.delete.any') : 'Delete job'}
                         >
                           Delete Job
                         </button>

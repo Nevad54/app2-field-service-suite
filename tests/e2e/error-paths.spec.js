@@ -19,7 +19,7 @@ async function loginStaff(page, username, password = '1111') {
 }
 
 test.describe.serial('Error and guardrail UI paths', () => {
-  test('dispatcher cannot delete quote (admin-only API path shows UI error)', async ({ page, request }) => {
+  test('dispatcher sees disabled quote delete with capability reason', async ({ page, request }) => {
     const adminToken = await apiLogin(request, 'admin', '1111');
     const customersRes = await request.get('http://localhost:3002/api/customers', {
       headers: { Authorization: `Bearer ${adminToken}` },
@@ -46,12 +46,9 @@ test.describe.serial('Error and guardrail UI paths', () => {
     const quoteCard = page.locator('.invoice-card', { hasText: quoteTitle }).first();
     await expect(quoteCard).toBeVisible();
 
-    page.once('dialog', (dialog) => dialog.accept());
-    await quoteCard.getByRole('button', { name: /Delete/ }).click();
-
-    const errorBox = page.locator('.form-error-box');
-    await expect(errorBox).toBeVisible();
-    await expect(errorBox).toContainText(/forbidden|request failed/i);
+    const deleteButton = quoteCard.getByRole('button', { name: /Delete/ });
+    await expect(deleteButton).toBeDisabled();
+    await expect(deleteButton).toHaveAttribute('title', /Requires capability: quotes\.delete\.any/);
     await expect(quoteCard).toBeVisible();
   });
 
@@ -150,5 +147,20 @@ test.describe.serial('Error and guardrail UI paths', () => {
       await page.getByRole('link', { name: 'Go to Dashboard' }).click();
       await expect(page).toHaveURL(/\/dashboard/);
     }
+  });
+
+  test('technician sees disabled in-page actions with capability guidance', async ({ page }) => {
+    await loginStaff(page, 'technician', '1111');
+
+    await page.goto('/jobs');
+    const createJobButton = page.getByRole('button', { name: '+ Create Job' });
+    await expect(createJobButton).toBeDisabled();
+    await expect(createJobButton).toHaveAttribute('title', /Requires capability: jobs\.manage/);
+
+    await page.goto('/schedule');
+    const saveRulesButton = page.getByRole('button', { name: 'Save Dispatch Rules' });
+    await expect(saveRulesButton).toBeDisabled();
+    await expect(saveRulesButton).toHaveAttribute('title', /Requires capability: dispatch\.manage/);
+    await expect(page.locator('.dispatch-settings .hint')).toContainText('Requires capability: dispatch.manage');
   });
 });

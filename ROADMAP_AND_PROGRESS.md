@@ -331,6 +331,16 @@ Date: 2026-03-06
      - Export page no longer duplicates `exports.view` gate internally
      - Users page no longer duplicates `accounts.manage` gate internally
    - Kept capability checks focused at route entry for clearer authorization contract and lower UI-branch drift risk
+19. Roles/accounts governance (phase 10):
+   - Added contextual capability guidance to disabled in-page actions (beyond route access):
+     - Jobs page now shows disabled `+ Create Job` button for non-`jobs.manage` users with capability reason tooltip
+     - Jobs page now shows disabled delete actions for non-`jobs.delete.any` users within manager-editable contexts
+     - Quotes page now shows disabled quote delete action for non-`quotes.delete.any` users with capability reason tooltip
+     - Schedule page now renders read-only dispatch settings/optimization actions for non-`dispatch.manage` users with explicit capability guidance
+   - Strengthened negative-path UI test coverage for action-level authorization UX:
+     - dispatcher quote delete action is disabled with required-capability tooltip
+     - technician sees disabled Jobs create action with required-capability tooltip
+     - technician sees disabled Schedule dispatch settings save action with required-capability tooltip
 
 ## Validation Status
 
@@ -351,6 +361,7 @@ Date: 2026-03-06
 9. Frontend build passes after roles/accounts governance phase 7 nav/capability UX update (`npm run build`, 2026-03-07).
 10. Frontend build passes after roles/accounts governance phase 8 route-guard hardening (`npm run build`, 2026-03-08).
 11. Frontend E2E unauthorized deep-link guard coverage passes (`npx playwright test tests/e2e/error-paths.spec.js --grep "technician deep-link"`, 2026-03-08).
+12. Frontend build and error-path E2E guardrail coverage pass after roles/accounts governance phase 10 (`npm run build` and `npx playwright test tests/e2e/error-paths.spec.js`, 2026-03-08).
 
 ## Current Status Summary
 
@@ -378,8 +389,9 @@ Date: 2026-03-06
 22. Roles/accounts governance phase 7 is complete (capability-aware nav discovery UX + static role-check removal in active flows).
 23. Roles/accounts governance phase 8 is complete (route-level capability guards + consistent no-access guidance for direct URL attempts).
 24. Roles/accounts governance phase 9 is complete (unauthorized deep-link E2E coverage + redundant page-level guard cleanup).
-25. Next value is role governance phase 10: extend capability-aware guidance to contextual action disable states (not just route access) with focused negative-path E2E coverage.
+25. Roles/accounts governance phase 10 is complete (contextual action-level capability guidance + negative-path E2E coverage).
+26. Next value is roles/accounts governance phase 11: align all remaining hidden-action patterns to explicit disabled-with-reason UX where safe and add targeted API-contract tests for capability payload drift.
 
 ## Suggested Next Task
 
-1. Implement roles/accounts phase 10: add capability-reason tooltips for disabled in-page actions and add E2E checks for forbidden action attempts across key pages.
+1. Implement roles/accounts phase 11: convert remaining hidden authorization-dependent actions to explicit disabled-with-reason affordances where appropriate, and add backend/API contract checks to guard permission payload consistency.

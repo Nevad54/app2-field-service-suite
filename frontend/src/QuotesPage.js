@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from './api';
-import { hasFrontendPermission } from './permissions';
+import { capabilityTooltip, hasFrontendPermission } from './permissions';
 
 export default function QuotesPage({ token, user }) {
   const [quotes, setQuotes] = useState([]);
@@ -214,8 +214,15 @@ export default function QuotesPage({ token, user }) {
     <section className="card">
       <div className="page-header">
         <h1>📝 Quotes / Estimates</h1>
-        {!showForm && canManageQuotes ? (
-          <button className="btn-primary" onClick={() => setShowForm(true)}>+ Create Quote</button>
+        {!showForm ? (
+          <button
+            className="btn-primary"
+            onClick={() => setShowForm(true)}
+            disabled={!canManageQuotes}
+            title={!canManageQuotes ? capabilityTooltip('quotes.manage') : 'Create quote'}
+          >
+            + Create Quote
+          </button>
         ) : null}
       </div>
 
@@ -465,7 +472,14 @@ export default function QuotesPage({ token, user }) {
                   <button className="btn-primary" onClick={() => openConvertModal(quote)}>Create Job</button>
                 )}
                 {canManageQuotes ? <button className="btn-secondary" onClick={() => handleEdit(quote)}>✏️ Edit</button> : null}
-                {canDeleteQuotes ? <button className="btn-danger" onClick={() => handleDelete(quote.id)}>🗑️ Delete</button> : null}
+                <button
+                  className="btn-danger"
+                  onClick={() => handleDelete(quote.id)}
+                  disabled={!canDeleteQuotes}
+                  title={!canDeleteQuotes ? capabilityTooltip('quotes.delete.any') : 'Delete quote'}
+                >
+                  🗑️ Delete
+                </button>
               </div>
             </div>
           ))}
