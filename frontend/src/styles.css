@@ -150,7 +150,11 @@ body {
   transform: translateX(calc(-100% + 24px));
   transition: transform 0.22s ease;
   box-shadow: var(--shadow-lg);
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
+.side-nav::-webkit-scrollbar { width: 0; height: 0; }
+.side-nav::-webkit-scrollbar-thumb { background: transparent; }
 .side-nav:hover,
 .side-nav:focus-within { transform: translateX(0); }
 .side-nav::after {
