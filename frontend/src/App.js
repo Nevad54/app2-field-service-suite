@@ -1478,119 +1478,128 @@ function SchedulePage({ token, user }) {
           </span>
         </div>
       )}
-      {canEditDispatchSettings && !loading && schedule.length > 0 ? (
-        <div className="optimization-panel">
-          <div className="optimization-header">
-            <h3>Dispatch Optimization</h3>
-            <button
-              type="button"
-              className="btn-secondary btn-small"
-              onClick={loadOptimization}
-              disabled={loadingOptimization}
-              aria-label="Refresh dispatch optimization suggestions"
-            >
-              {loadingOptimization ? 'Analyzing...' : 'Refresh Suggestions'}
-            </button>
-          </div>
-          {optimization?.summary ? (
-            <div className="optimization-summary">
-              <span className="alert-pill">Suggestions: {optimization.summary.suggestions}</span>
-              <span className="alert-pill">Assign: {optimization.summary.assignmentSuggestions}</span>
-              <span className="alert-pill">Reschedule: {optimization.summary.rescheduleSuggestions}</span>
+      {!loading && schedule.length > 0 && (
+        <div className={`schedule-main-layout ${canEditDispatchSettings ? 'with-optimization' : ''}`}>
+          <div className="schedule-primary-pane">
+            <div className="schedule-focus-header">
+              <h3>{viewMode === 'list' ? 'Schedule List' : 'Schedule Calendar'}</h3>
+              <p className="hint">Primary dispatch view. Use optimization actions from the side panel when needed.</p>
             </div>
-          ) : null}
-          {optimization?.suggestions?.length ? (
-            <div className="optimization-list">
-              {optimization.suggestions.slice(0, 8).map((item) => (
-                <article key={item.id} className={`optimization-item ${item.severity || 'low'}`}>
-                  <div className="optimization-item-main">
-                    <strong>{item.jobId}</strong>
-                    <span>{item.type === 'assign' ? `Assign to ${item.suggestedAssignee}` : `Move to ${item.suggestedDate}`}</span>
-                    <small>{item.reason}</small>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-primary btn-small"
-                    onClick={() => applyOptimizationSuggestion(item)}
-                    disabled={applyingOptimizationId === item.id}
-                    aria-label={`Apply optimization suggestion for ${item.jobId}`}
-                  >
-                    {applyingOptimizationId === item.id ? 'Applying...' : 'Apply'}
-                  </button>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <p className="hint">No optimization suggestions right now.</p>
-          )}
-        </div>
-      ) : null}
-      
-      {!loading && viewMode === 'list' && schedule.length > 0 && (
-        <div className="schedule-list">
-          {sortedDates.map(date => (
-            <div key={date} className="schedule-date-group">
-              <h3 className="schedule-date">
-                📅 {new Date(date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </h3>
-              <div className="schedule-items">
-                {jobsByDate[date].map(job => (
-                  <div key={job.id} className={`schedule-item ${getScheduleStatusClass(job.status)}`}>
-                    <div className="schedule-time">
-                      <span className="status-icon">{getStatusIcon(job.status)}</span>
-                    </div>
-                    <div className="schedule-content">
-                      <div className="schedule-header">
-                        <h4>{job.id}</h4>
-                        <span className={`status-badge ${getStatusColor(job.status)}`}>{job.status}</span>
-                      </div>
-                      <p className="schedule-title">{job.title}</p>
-                      <div className="schedule-meta">
-                        <span>👤 {job.customerName}</span>
-                        <span>📍 {job.location}</span>
-                        {job.assignedTo && <span>🔧 {job.assignedTo}</span>}
-                      </div>
-                      <div className="schedule-alerts">
-                        {getJobRiskLabel(job) === 'overdue' ? <span className="mini-alert danger">Overdue deadline</span> : null}
-                        {getJobRiskLabel(job) === 'due-today' ? <span className="mini-alert warning">Due today</span> : null}
-                        {job.assignedTo && conflictIndex.get(`${job.assignedTo}::${job.scheduledDate}`) ? (
-                          <span className="mini-alert warning">Tech conflict</span>
-                        ) : null}
-                      </div>
+
+            {viewMode === 'list' ? (
+              <div className="schedule-list">
+                {sortedDates.map(date => (
+                  <div key={date} className="schedule-date-group">
+                    <h3 className="schedule-date">
+                      📅 {new Date(date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    </h3>
+                    <div className="schedule-items">
+                      {jobsByDate[date].map(job => (
+                        <div key={job.id} className={`schedule-item ${getScheduleStatusClass(job.status)}`}>
+                          <div className="schedule-time">
+                            <span className="status-icon">{getStatusIcon(job.status)}</span>
+                          </div>
+                          <div className="schedule-content">
+                            <div className="schedule-header">
+                              <h4>{job.id}</h4>
+                              <span className={`status-badge ${getStatusColor(job.status)}`}>{job.status}</span>
+                            </div>
+                            <p className="schedule-title">{job.title}</p>
+                            <div className="schedule-meta">
+                              <span>👤 {job.customerName}</span>
+                              <span>📍 {job.location}</span>
+                              {job.assignedTo && <span>🔧 {job.assignedTo}</span>}
+                            </div>
+                            <div className="schedule-alerts">
+                              {getJobRiskLabel(job) === 'overdue' ? <span className="mini-alert danger">Overdue deadline</span> : null}
+                              {getJobRiskLabel(job) === 'due-today' ? <span className="mini-alert warning">Due today</span> : null}
+                              {job.assignedTo && conflictIndex.get(`${job.assignedTo}::${job.scheduledDate}`) ? (
+                                <span className="mini-alert warning">Tech conflict</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!loading && viewMode === 'calendar' && schedule.length > 0 && (
-        <div className="calendar-view">
-          <div className="calendar-grid">
-            {sortedDates.map(date => {
-              const dateObj = new Date(date);
-              return (
-              <div key={date} className="calendar-day">
-                <div className="calendar-day-header">
-                  <span className="day-number">{dateObj.getDate()}</span>
-                  <span className="day-name">{dateObj.toLocaleDateString('en-US', { weekday: 'short' })}</span>
-                  <span className="day-month-year">{dateObj.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
-                </div>
-                <div className="calendar-jobs">
-                  {jobsByDate[date].map(job => (
-                    <div key={job.id} className={`calendar-job ${getScheduleStatusClass(job.status)}`}>
-                      <span className="job-id">{job.id}</span>
-                      <span className="job-title">{job.title}</span>
-                      {getJobRiskLabel(job) === 'overdue' ? <span className="calendar-alert danger">Overdue</span> : null}
-                      {getJobRiskLabel(job) !== 'overdue' && getJobRiskLabel(job) === 'due-today' ? <span className="calendar-alert warning">Due today</span> : null}
+            ) : (
+              <div className="calendar-view">
+                <div className="calendar-grid">
+                  {sortedDates.map(date => {
+                    const dateObj = new Date(date);
+                    return (
+                    <div key={date} className="calendar-day">
+                      <div className="calendar-day-header">
+                        <span className="day-number">{dateObj.getDate()}</span>
+                        <span className="day-name">{dateObj.toLocaleDateString('en-US', { weekday: 'short' })}</span>
+                        <span className="day-month-year">{dateObj.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                      </div>
+                      <div className="calendar-jobs">
+                        {jobsByDate[date].map(job => (
+                          <div key={job.id} className={`calendar-job ${getScheduleStatusClass(job.status)}`}>
+                            <span className="job-id">{job.id}</span>
+                            <span className="job-title">{job.title}</span>
+                            {getJobRiskLabel(job) === 'overdue' ? <span className="calendar-alert danger">Overdue</span> : null}
+                            {getJobRiskLabel(job) !== 'overdue' && getJobRiskLabel(job) === 'due-today' ? <span className="calendar-alert warning">Due today</span> : null}
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
-            )})}
+            )}
           </div>
+
+          {canEditDispatchSettings ? (
+            <aside className="optimization-panel optimization-panel-side">
+              <div className="optimization-header">
+                <h3>Dispatch Optimization</h3>
+                <button
+                  type="button"
+                  className="btn-secondary btn-small"
+                  onClick={loadOptimization}
+                  disabled={loadingOptimization}
+                  aria-label="Refresh dispatch optimization suggestions"
+                >
+                  {loadingOptimization ? 'Analyzing...' : 'Refresh'}
+                </button>
+              </div>
+              {optimization?.summary ? (
+                <div className="optimization-summary">
+                  <span className="alert-pill">Total: {optimization.summary.suggestions}</span>
+                  <span className="alert-pill">Assign: {optimization.summary.assignmentSuggestions}</span>
+                  <span className="alert-pill">Move: {optimization.summary.rescheduleSuggestions}</span>
+                </div>
+              ) : null}
+              {optimization?.suggestions?.length ? (
+                <div className="optimization-list">
+                  {optimization.suggestions.slice(0, 6).map((item) => (
+                    <article key={item.id} className={`optimization-item ${item.severity || 'low'}`}>
+                      <div className="optimization-item-main">
+                        <strong>{item.jobId}</strong>
+                        <span>{item.type === 'assign' ? `Assign to ${item.suggestedAssignee}` : `Move to ${item.suggestedDate}`}</span>
+                        <small>{item.reason}</small>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn-primary btn-small"
+                        onClick={() => applyOptimizationSuggestion(item)}
+                        disabled={applyingOptimizationId === item.id}
+                        aria-label={`Apply optimization suggestion for ${item.jobId}`}
+                      >
+                        {applyingOptimizationId === item.id ? 'Applying...' : 'Apply'}
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="hint">No optimization suggestions right now.</p>
+              )}
+            </aside>
+          ) : null}
         </div>
       )}
     </section>
