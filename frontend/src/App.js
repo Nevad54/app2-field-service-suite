@@ -3590,6 +3590,8 @@ export default function App() {
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [desktopNavExpanded, setDesktopNavExpanded] = useState(false);
+  const desktopNavRef = useRef(null);
   const isAuthed = Boolean(auth && auth.token && auth.user);
   const isClientAuthed = Boolean(clientAuth && clientAuth.token && clientAuth.user);
 
@@ -3768,6 +3770,18 @@ export default function App() {
     };
   }, [mobileNavOpen]);
 
+  const handleDesktopNavBlur = useCallback((event) => {
+    const nextTarget = event.relatedTarget;
+    if (
+      desktopNavRef.current &&
+      nextTarget instanceof Node &&
+      desktopNavRef.current.contains(nextTarget)
+    ) {
+      return;
+    }
+    setDesktopNavExpanded(false);
+  }, []);
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -3820,9 +3834,17 @@ export default function App() {
         </div>
       </header>
 
-      <div className="app-layout">
+      <div className={`app-layout ${isAuthed && desktopNavExpanded ? 'sidebar-expanded' : ''}`}>
       {isAuthed ? (
-        <aside className="side-nav-shell desktop-only" aria-label="Primary navigation">
+        <aside
+          ref={desktopNavRef}
+          className="side-nav-shell desktop-only"
+          aria-label="Primary navigation"
+          onMouseEnter={() => setDesktopNavExpanded(true)}
+          onMouseLeave={() => setDesktopNavExpanded(false)}
+          onFocusCapture={() => setDesktopNavExpanded(true)}
+          onBlurCapture={handleDesktopNavBlur}
+        >
           <nav className="side-nav-rail" aria-label="Quick navigation">
             {sideRailLinks.map((link) => (
               <NavLink key={`rail-${link.to}`} to={link.to} end={Boolean(link.end)} className="side-nav-rail-link" title={link.label}>
