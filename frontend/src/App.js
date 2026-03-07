@@ -3754,11 +3754,6 @@ export default function App() {
 
     return sections;
   }, [isAuthed, canManageCustomers, canManageAccounts, canViewExports]);
-  const sideRailLinks = useMemo(
-    () => navSections.flatMap((section) => section.links || []),
-    [navSections]
-  );
-
   useEffect(() => {
     setMobileNavOpen(false);
   }, [location.pathname]);
@@ -3834,7 +3829,7 @@ export default function App() {
         </div>
       </header>
 
-      <div className={`app-layout ${isAuthed && desktopNavExpanded ? 'sidebar-expanded' : ''}`}>
+      <div className={`app-layout ${isAuthed ? 'with-sidebar' : 'no-sidebar'} ${isAuthed && desktopNavExpanded ? 'sidebar-expanded' : ''}`}>
       {isAuthed ? (
         <aside
           ref={desktopNavRef}
@@ -3845,26 +3840,18 @@ export default function App() {
           onFocusCapture={() => setDesktopNavExpanded(true)}
           onBlurCapture={handleDesktopNavBlur}
         >
-          <nav className="side-nav-rail" aria-label="Quick navigation">
-            {sideRailLinks.map((link) => (
-              <NavLink key={`rail-${link.to}`} to={link.to} end={Boolean(link.end)} className="side-nav-rail-link" title={link.label}>
-                <span>{getNavIcon(link.to, link.label)}</span>
-              </NavLink>
+          <nav className="side-nav" aria-label="Section navigation">
+            {navSections.map((section) => (
+              <div key={section.title} className="side-nav-section">
+                <p className="side-nav-title">{section.title}</p>
+                {section.links.map((link) => (
+                  <NavLink key={link.to} to={link.to} end={Boolean(link.end)} className="side-nav-link" title={link.label}>
+                    <span className="side-nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
+                    <span className="side-nav-link-label">{link.label}</span>
+                  </NavLink>
+                ))}
+              </div>
             ))}
-          </nav>
-          <nav className="side-nav-panel" aria-label="Section navigation">
-            <div className="side-nav-links">
-              {navSections.map((section) => (
-                <div key={section.title} className="side-nav-section">
-                  <p className="side-nav-title">{section.title}</p>
-                  {section.links.map((link) => (
-                    <NavLink key={link.to} to={link.to} end={Boolean(link.end)}>
-                      {link.label}
-                    </NavLink>
-                  ))}
-                </div>
-              ))}
-            </div>
           </nav>
         </aside>
       ) : null}
