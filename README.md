@@ -1,8 +1,41 @@
 # Field Service Suite
 
-Field Service Suite is a full-stack field operations platform for dispatching, executing, and closing service jobs with role-based access control and customer portal support.
+Field teams lose time and revenue when dispatch, technician updates, customer communication, and billing are split across spreadsheets, chat threads, and disconnected tools.
+
+Field Service Suite solves that by putting the full service lifecycle in one platform: schedule work, execute in the field, track proof/completion, manage quotes/invoices, and enforce role-based operations safely.
 
 Live app: https://fieldservice-suite.netlify.app/
+
+Try it now: sign in as `admin / 1111` or `manager / 1111` at `/login`.
+
+## The Problem
+
+- Jobs get delayed because dispatch and technician execution are not connected.
+- Managers lack real-time risk visibility for overdue and due-soon work.
+- Teams miss accountability when check-in/checkout and completion proof are inconsistent.
+- Back-office handoff breaks when quotes, inventory, and invoices live in separate systems.
+
+## The Solution
+
+- One workflow from job creation to completion and billing.
+- Built-in dispatch controls, deadline-risk views, and optimization suggestions.
+- Field-ready execution with check-in/checkout, worklogs, photos, and completion proof.
+- Capability-based access model so each role sees the right actions with clear guardrails.
+
+## Who It's For
+
+- HVAC, electrical, plumbing, and general field service businesses.
+- Dispatch-heavy teams coordinating multiple technicians daily.
+- Operations managers who need deadline-risk visibility and tighter execution control.
+- Service organizations moving from spreadsheet/manual workflows to one system.
+
+## Business Outcomes
+
+- Faster dispatch-to-completion cycle time.
+- Better on-time performance with due-soon and overdue risk visibility.
+- Stronger accountability through check-in/check-out and completion evidence.
+- Cleaner handoffs between field teams and back office (quotes, inventory, invoices).
+- Lower permission and access risk with capability-based controls.
 
 ## Current Status
 
@@ -14,7 +47,7 @@ As of 2026-03-08:
 
 Source of truth: [ROADMAP_AND_PROGRESS.md](./ROADMAP_AND_PROGRESS.md)
 
-## Core Capabilities
+## What You Can Do
 
 - Dispatch + job lifecycle: create, assign, check-in, checkout, quick-close.
 - Recurring maintenance: create/edit/pause/activate/delete, schedule visibility.
