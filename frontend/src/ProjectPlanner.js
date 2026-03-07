@@ -1090,7 +1090,12 @@ export default function ProjectPlanner({ token }) {
                     <span className="day-number">{d.day}</span>
                     <div className="day-tasks">
                       {d.tasks && d.tasks.slice(0, 3).map(task => (
-                        <div key={task.id} className={`calendar-task ${task.status}`}>
+                        <div
+                          key={task.id}
+                          className={`calendar-task ${task.status}`}
+                          title={task.name}
+                          aria-label={task.name}
+                        >
                           {task.name.substring(0, 15)}
                         </div>
                       ))}

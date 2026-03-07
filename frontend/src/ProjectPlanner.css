@@ -1676,12 +1676,39 @@ letter-spacing: 0.04em;
   }
   
   .planner .day-tasks {
-    display: none;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+    margin-top: 2px;
+  }
+
+  /* On very small screens, render activities as compact dots instead of hiding them */
+  .planner .calendar-task {
+    width: 8px;
+    height: 8px;
+    padding: 0;
+    border-radius: 999px;
+    font-size: 0;
+    line-height: 0;
+    overflow: hidden;
+    text-indent: -9999px;
+    border-left-width: 0;
   }
   
   .planner .more-tasks {
-    display: block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 12px;
+    padding: 0 4px;
+    border-radius: 999px;
     font-size: 0.6rem;
+    font-style: normal;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
   }
 }
 
