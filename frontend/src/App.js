@@ -100,6 +100,26 @@ const ACCOUNT_STATUS_GUIDE = Object.freeze({
 
 const formatRoleLabel = (role) => ROLE_GUIDE[String(role || '').toLowerCase()]?.label || String(role || 'Unknown');
 const roleSummary = (role) => ROLE_GUIDE[String(role || '').toLowerCase()]?.summary || 'No role summary available.';
+const NAV_ICON_BY_PATH = Object.freeze({
+  '/dashboard': 'D',
+  '/jobs': 'J',
+  '/schedule': 'S',
+  '/customers': 'C',
+  '/invoices': 'I',
+  '/activity': 'A',
+  '/projects': 'P',
+  '/project-planner': 'PL',
+  '/team': 'T',
+  '/inventory': 'IN',
+  '/equipment': 'EQ',
+  '/quotes': 'Q',
+  '/recurring': 'R',
+  '/export': 'EX',
+  '/users': 'U',
+  '/': 'H',
+  '/login': 'L',
+  '/client-login': 'CP',
+});
 
 const normalizePhotoTag = (value) => {
   const next = String(value || '').toLowerCase().trim();
@@ -3731,6 +3751,10 @@ export default function App() {
 
     return sections;
   }, [isAuthed, canManageCustomers, canManageAccounts, canViewExports]);
+  const sideRailLinks = useMemo(
+    () => navSections.flatMap((section) => section.links || []),
+    [navSections]
+  );
 
   useEffect(() => {
     setMobileNavOpen(false);
@@ -3797,8 +3821,15 @@ export default function App() {
 
       <div className="app-layout">
       {isAuthed ? (
-        <aside className="side-nav desktop-only" aria-label="Primary navigation">
-          <nav className="side-nav-links">
+        <aside className="side-nav-shell desktop-only" aria-label="Primary navigation">
+          <nav className="side-nav-rail" aria-label="Quick navigation">
+            {sideRailLinks.map((link) => (
+              <NavLink key={`rail-${link.to}`} to={link.to} end={Boolean(link.end)} className="side-nav-rail-link" title={link.label}>
+                <span>{NAV_ICON_BY_PATH[link.to] || String(link.label || '?').slice(0, 2).toUpperCase()}</span>
+              </NavLink>
+            ))}
+          </nav>
+          <nav className="side-nav-panel" aria-label="Section navigation">
             {navSections.map((section) => (
               <div key={section.title} className="side-nav-section">
                 <p className="side-nav-title">{section.title}</p>
