@@ -1142,11 +1142,13 @@ textarea:focus-visible {
 .team-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
 .team-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
 
-.team-card-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.team-card-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 12px; margin-bottom: 12px; }
 .team-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1rem; font-weight: 600; color: white; background: var(--accent); flex-shrink: 0; }
 .team-info { flex: 1; min-width: 0; }
-.team-info h3 { font-size: 1rem; margin: 0 0 2px 0; color: var(--text-primary); }
-.team-email { font-size: 0.85rem; color: var(--text-secondary); margin: 0; }
+.team-info h3 { font-size: 1rem; margin: 0 0 2px 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.team-email { font-size: 0.85rem; color: var(--text-secondary); margin: 0; overflow-wrap: anywhere; }
+.team-phone { margin: 2px 0 0; overflow-wrap: anywhere; }
+.team-card-header .status-badge { justify-self: end; align-self: start; white-space: nowrap; }
 
 .team-skills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .skill-tag { padding: 2px 8px; background: var(--bg-tertiary); color: var(--text-secondary); border-radius: 4px; font-size: 0.75rem; }
