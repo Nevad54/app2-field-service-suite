@@ -101,25 +101,26 @@ const ACCOUNT_STATUS_GUIDE = Object.freeze({
 const formatRoleLabel = (role) => ROLE_GUIDE[String(role || '').toLowerCase()]?.label || String(role || 'Unknown');
 const roleSummary = (role) => ROLE_GUIDE[String(role || '').toLowerCase()]?.summary || 'No role summary available.';
 const NAV_ICON_BY_PATH = Object.freeze({
-  '/dashboard': 'D',
-  '/jobs': 'J',
-  '/schedule': 'S',
-  '/customers': 'C',
-  '/invoices': 'I',
-  '/activity': 'A',
-  '/projects': 'P',
-  '/project-planner': 'PL',
-  '/team': 'T',
-  '/inventory': 'IN',
-  '/equipment': 'EQ',
-  '/quotes': 'Q',
-  '/recurring': 'R',
-  '/export': 'EX',
-  '/users': 'U',
-  '/': 'H',
-  '/login': 'L',
-  '/client-login': 'CP',
+  '/dashboard': '\u{1F4CA}',
+  '/jobs': '\u{1F4CB}',
+  '/schedule': '\u{1F4C5}',
+  '/customers': '\u{1F465}',
+  '/invoices': '\u{1F4C4}',
+  '/activity': '\u{1F4DD}',
+  '/projects': '\u{1F4C1}',
+  '/project-planner': '\u{1F4C8}',
+  '/team': '\u{1F9D1}\u200D\u{1F527}',
+  '/inventory': '\u{1F4E6}',
+  '/equipment': '\u2699\uFE0F',
+  '/quotes': '\u{1F4AC}',
+  '/recurring': '\u{1F501}',
+  '/export': '\u{1F4E4}',
+  '/users': '\u{1F464}',
+  '/': '\u{1F3E0}',
+  '/login': '\u{1F510}',
+  '/client-login': '\u{1F4BB}',
 });
+const getNavIcon = (path, label) => NAV_ICON_BY_PATH[path] || String(label || '?').slice(0, 2).toUpperCase();
 
 const normalizePhotoTag = (value) => {
   const next = String(value || '').toLowerCase().trim();
@@ -3825,21 +3826,24 @@ export default function App() {
           <nav className="side-nav-rail" aria-label="Quick navigation">
             {sideRailLinks.map((link) => (
               <NavLink key={`rail-${link.to}`} to={link.to} end={Boolean(link.end)} className="side-nav-rail-link" title={link.label}>
-                <span>{NAV_ICON_BY_PATH[link.to] || String(link.label || '?').slice(0, 2).toUpperCase()}</span>
+                <span>{getNavIcon(link.to, link.label)}</span>
               </NavLink>
             ))}
           </nav>
           <nav className="side-nav-panel" aria-label="Section navigation">
-            {navSections.map((section) => (
-              <div key={section.title} className="side-nav-section">
-                <p className="side-nav-title">{section.title}</p>
-                {section.links.map((link) => (
-                  <NavLink key={link.to} to={link.to} end={Boolean(link.end)}>
-                    {link.label}
-                  </NavLink>
-                ))}
-              </div>
-            ))}
+            <div className="side-nav-links">
+              {navSections.map((section) => (
+                <div key={section.title} className="side-nav-section">
+                  <p className="side-nav-title">{section.title}</p>
+                  {section.links.map((link) => (
+                    <NavLink key={link.to} to={link.to} end={Boolean(link.end)} className="nav-link-with-icon">
+                      <span className="nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
+                      <span>{link.label}</span>
+                    </NavLink>
+                  ))}
+                </div>
+              ))}
+            </div>
           </nav>
         </aside>
       ) : null}
@@ -3860,8 +3864,9 @@ export default function App() {
             <div key={section.title} className="mobile-nav-section">
               <p className="mobile-nav-title">{section.title}</p>
               {section.links.map((link) => (
-                <NavLink key={link.to} to={link.to} end={Boolean(link.end)} onClick={() => setMobileNavOpen(false)}>
-                  {link.label}
+                <NavLink key={link.to} to={link.to} end={Boolean(link.end)} onClick={() => setMobileNavOpen(false)} className="nav-link-with-icon">
+                  <span className="nav-link-icon" aria-hidden="true">{getNavIcon(link.to, link.label)}</span>
+                  <span>{link.label}</span>
                 </NavLink>
               ))}
             </div>
